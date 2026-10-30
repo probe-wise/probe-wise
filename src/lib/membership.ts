@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { headers } from "next/headers";
 import type { Database } from "@/lib/database.types";
 import { configuredSiteUrl } from "@/lib/env";
+import { isSeatFreePath } from "@/lib/routes";
 import { safeNextPath } from "@/lib/safe-redirect";
 
 /**
@@ -10,6 +11,10 @@ import { safeNextPath } from "@/lib/safe-redirect";
  * existing members) and decides where the user should land.
  */
 export async function claimSeatAndRoute(supabase: SupabaseClient<Database>, next: string | null | undefined) {
+  // Invite links and interview rooms don't need a seat: don't claim one (or waitlist) on the way there.
+  const destination = safeNextPath(next);
+  if (isSeatFreePath(destination)) return destination;
+
   const { data: status, error } = await supabase.rpc("claim_seat");
   if (error) {
     console.error("claim_seat failed", error);
@@ -19,7 +24,7 @@ export async function claimSeatAndRoute(supabase: SupabaseClient<Database>, next
 
   const { data: profile } = await supabase.from("profiles").select("onboarding_completed_at").maybeSingle();
   if (!profile?.onboarding_completed_at) return "/onboarding";
-  return safeNextPath(next);
+  return destination;
 }
 
 /**

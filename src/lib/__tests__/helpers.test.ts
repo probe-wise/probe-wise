@@ -1,18 +1,23 @@
 import { describe, expect, it } from "vitest";
 import { authErrorCode, authErrorMessage, callbackErrorCode } from "../auth-errors";
 import { configuredSiteUrl, enabledOAuthProviders } from "../env";
-import { previewsFor } from "../problem-previews";
-import { DOMAINS, values } from "../profile-options";
 import { daysUntil, joinList } from "../profile-form-values";
-import { isGuestOnlyPath, isProtectedPath } from "../routes";
-import { PROBLEM_PREVIEWS } from "../problem-previews";
+import { isGuestOnlyPath, isProtectedPath, isSeatFreePath } from "../routes";
 
 describe("route rules", () => {
-  it.each(["/dashboard", "/dashboard/x", "/onboarding", "/profile", "/waitlist"])("%s is protected", (p) => {
+  it.each(["/dashboard", "/dashboard/x", "/onboarding", "/profile", "/waitlist", "/problems", "/interview/abc"])("%s is protected", (p) => {
     expect(isProtectedPath(p)).toBe(true);
   });
-  it.each(["/", "/login", "/auth/callback", "/dashboards", "/profiles"])("%s is not protected", (p) => {
+  it.each(["/", "/login", "/auth/callback", "/dashboards", "/profiles", "/interviews"])("%s is not protected", (p) => {
     expect(isProtectedPath(p)).toBe(false);
+  });
+  it("interview rooms and invite links don't need a seat", () => {
+    expect(isSeatFreePath("/interview/join/abc")).toBe(true);
+    expect(isSeatFreePath("/interview/123?x=1")).toBe(true);
+    expect(isSeatFreePath("/interview")).toBe(true);
+    expect(isSeatFreePath("/interviews")).toBe(false);
+    expect(isSeatFreePath("/dashboard")).toBe(false);
+    expect(isSeatFreePath("/problems/payment-ledger")).toBe(false);
   });
   it("only /login is guest-only", () => {
     expect(isGuestOnlyPath("/login")).toBe(true);
@@ -54,19 +59,6 @@ describe("env parsing", () => {
     process.env.NEXT_PUBLIC_SITE_URL = "not a url";
     expect(configuredSiteUrl()).toBeNull();
     process.env.NEXT_PUBLIC_SITE_URL = original;
-  });
-});
-
-describe("problem previews", () => {
-  it("covers every domain with at least two problems", () => {
-    for (const d of values(DOMAINS)) expect(PROBLEM_PREVIEWS[d]?.length).toBeGreaterThanOrEqual(2);
-  });
-  it("represents each chosen domain before repeating one", () => {
-    const picks = previewsFor(["fintech", "social", "gaming"]);
-    expect(picks.map((p) => p.domain)).toEqual(["fintech", "social", "gaming", "fintech"]);
-  });
-  it("ignores unknown domains instead of crashing", () => {
-    expect(previewsFor(["nope", "fintech"]).every((p) => p.domain === "fintech")).toBe(true);
   });
 });
 

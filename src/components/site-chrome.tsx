@@ -47,6 +47,12 @@ async function AuthNav() {
       <Link href="/dashboard" className="btn btn-ghost">
         Dashboard
       </Link>
+      <Link href="/problems" className="btn btn-ghost hidden sm:inline-flex">
+        Problems
+      </Link>
+      <Link href="/interview" className="btn btn-ghost hidden sm:inline-flex">
+        Sessions
+      </Link>
       <Link href="/profile" className="btn btn-ghost">
         Profile
       </Link>

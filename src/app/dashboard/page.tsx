@@ -2,7 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { requireMember } from "@/lib/dal";
-import { previewsFor } from "@/lib/problem-previews";
+import { SessionList } from "@/components/interview/session-list";
+import { listMySessions } from "@/lib/interview/session-dal";
+import { queuedProblems } from "@/lib/problems/catalog";
+import { domainLabel } from "@/lib/problems/labels";
 import { DOMAINS, SENIORITY_LEVELS, TARGET_ROLES, WEAK_AREAS, labelFor } from "@/lib/profile-options";
 import { daysUntil, joinList } from "@/lib/profile-form-values";
 import { isoDate } from "@/lib/profile-schema";
@@ -40,7 +43,8 @@ async function Dashboard({ searchParams }: { searchParams: SearchParams }) {
   const role = labelFor(TARGET_ROLES, profile.target_role);
   const domainLabels = profile.domains.map((d) => labelFor(DOMAINS, d));
   const weakLabels = profile.weak_areas.map((w) => labelFor(WEAK_AREAS, w));
-  const problems = previewsFor(profile.domains);
+  const problems = queuedProblems(profile);
+  const sessions = await listMySessions(8);
 
   return (
     <div className="grid gap-12">
@@ -63,22 +67,25 @@ async function Dashboard({ searchParams }: { searchParams: SearchParams }) {
 
       <div className="grid gap-10 lg:grid-cols-[1.6fr_1fr]">
         <section aria-labelledby="queued-heading" className="grid content-start gap-4">
-          <div>
-            <h2 id="queued-heading">Problems queued for you</h2>
-            <p className="muted mt-2">
-              Interview sessions open in the next release. These are the problems your profile will start with.
-            </p>
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <div>
+              <h2 id="queued-heading">Problems queued for you</h2>
+              <p className="muted mt-2">Picked from your domains and level. Practise solo or invite an interviewer.</p>
+            </div>
+            <Link href="/problems" className="link">
+              All problems
+            </Link>
           </div>
           <ol className="grid gap-3">
             {problems.map((p) => (
-              <li key={p.title} className="panel grid gap-1">
-                <span className="text-sm text-ink-faint">{labelFor(DOMAINS, p.domain)}</span>
+              <li key={p.slug} className="panel grid gap-1">
+                <span className="text-sm text-ink-faint">{domainLabel(p.domain)}</span>
                 <h3>{p.title}</h3>
                 <p className="muted text-[0.95rem]">Expect follow-ups on {p.focus.toLowerCase()}.</p>
                 <div className="mt-2">
-                  <button type="button" className="btn btn-secondary" disabled aria-disabled="true">
-                    Opens soon
-                  </button>
+                  <Link href={`/problems/${p.slug}`} className="btn btn-secondary">
+                    Start
+                  </Link>
                 </div>
               </li>
             ))}
@@ -90,10 +97,20 @@ async function Dashboard({ searchParams }: { searchParams: SearchParams }) {
             <h2 id="history-heading" className="text-[1.3rem]!">
               Past sessions
             </h2>
-            <p className="muted">
-              No sessions yet. After your first interview, your scores for each phase and the interviewer&apos;s notes
-              show up here.
-            </p>
+            <SessionList
+              sessions={sessions}
+              empty={
+                <p className="muted">
+                  No sessions yet. After your first interview, your scores for each phase and the interviewer&apos;s
+                  notes show up here.
+                </p>
+              }
+            />
+            {sessions.length ? (
+              <Link href="/interview" className="link text-[0.95rem]">
+                All sessions
+              </Link>
+            ) : null}
           </section>
 
           <section aria-labelledby="focus-heading" className="grid gap-2">

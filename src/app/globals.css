@@ -172,6 +172,31 @@ p { text-wrap: pretty; }
     padding: clamp(1.1rem, 3vw, 1.75rem);
   }
 
+  /* Interview room */
+  .phase-step {
+    display: inline-flex; align-items: center; gap: 0.35rem;
+    min-height: 2rem; padding: 0.2rem 0.6rem; border-radius: 999px;
+    border: 1.5px solid var(--grid); background: var(--board-raised);
+    font-size: 0.82rem; font-weight: 600; color: var(--ink-faint);
+  }
+  .phase-step:not(:disabled) { cursor: pointer; }
+  .phase-step:not(:disabled):hover { border-color: var(--ink-faint); }
+  .phase-done { color: var(--pass); border-color: var(--pass); }
+  .phase-current { color: var(--board-raised); background: var(--marker); border-color: var(--marker); }
+
+  .tab {
+    padding: 0.45rem 0.75rem; border-radius: 0.4rem 0.4rem 0 0; border-bottom: 2px solid transparent;
+    font-size: 0.88rem; font-weight: 600; color: var(--ink-faint); cursor: pointer;
+  }
+  .tab:hover { color: var(--ink); }
+  .tab-active { color: var(--ink); border-bottom-color: var(--marker); }
+
+  .chip {
+    display: inline-flex; align-items: center; gap: 0.35rem;
+    padding: 0.15rem 0.55rem; border-radius: 999px; border: 1px solid var(--grid);
+    background: var(--board-raised); font-size: 0.8rem; color: var(--ink-soft);
+  }
+
   .skeleton {
     background: linear-gradient(90deg, var(--grid) 0%, var(--board) 50%, var(--grid) 100%);
     background-size: 200% 100%;

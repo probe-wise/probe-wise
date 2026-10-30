@@ -5,9 +5,11 @@ role, level and domain you're interviewing for.
 
 **Phase 1** is system design interviews for the first 100 candidates. Code review and bug-fixing rounds come later.
 
-> **Status of this branch (`feature/phase1-foundation`)**: milestone 1 is built: accounts, the 100-seat sign-up cap
-> with a waitlist, onboarding, profile and the dashboard shell. The interview room itself is milestone 2. See
-> [Roadmap](#roadmap).
+> **Status of this branch (`feature/phase1-m2-interview-room`)**: milestones 1 and 2 are built. Milestone 1 covers
+> accounts, the 100-seat cap with a waitlist, onboarding and profile. Milestone 2 adds the problem bank and a
+> **shared, fully recorded interview room** for a candidate and up to two human interviewers, with scorecards and a
+> review page. The AI interviewer is milestone 3. See [Roadmap](#roadmap) and
+> [`docs/milestone-2/PROGRESS.md`](docs/milestone-2/PROGRESS.md).
 
 ---
 
@@ -17,6 +19,7 @@ role, level and domain you're interviewing for.
 - [Set up Supabase](#set-up-supabase)
 - [Deploy to Vercel](#deploy-to-vercel)
 - [How sign-up and the 100-seat cap work](#how-sign-up-and-the-100-seat-cap-work)
+- [How interview sessions work](#how-interview-sessions-work)
 - [Project structure](#project-structure)
 - [Decision log](#decision-log)
 - [Edge cases handled](#edge-cases-handled)
@@ -24,6 +27,7 @@ role, level and domain you're interviewing for.
 - [Testing](#testing)
 - [Working on this codebase](#working-on-this-codebase)
 - [Roadmap](#roadmap)
+- [Documentation](#documentation)
 
 ---
 
@@ -51,7 +55,7 @@ yet" notice instead of failing.
 ## Set up Supabase
 
 1. **Create a project** at [supabase.com](https://supabase.com) (the free tier is enough for 100 users).
-2. **Run the migration.** Either paste `supabase/migrations/20261030000000_phase1_foundation.sql` into the SQL editor,
+2. **Run the migrations**, in filename order. Either paste each file in `supabase/migrations/` into the SQL editor,
    or with the Supabase CLI: `supabase link --project-ref <ref>` then `supabase db push`.
 3. **Copy the keys** from *Project Settings → API* into `.env.local`: the URL and the **publishable** key. Never put
    the secret or service-role key in this app; nothing here needs it.
@@ -78,7 +82,10 @@ yet" notice instead of failing.
 7. **OAuth (optional)**: enable Google and/or GitHub under *Auth → Providers*, with callback
    `https://<project-ref>.supabase.co/auth/v1/callback`. Then list them in `NEXT_PUBLIC_AUTH_PROVIDERS`. Buttons only
    appear for providers listed there, so a half-configured provider never sends people to an error page.
-8. **Change the cap** at any time, without a deploy:
+8. **Realtime (interview rooms)**: under *Project Settings → Realtime*, turn **off** "Allow public access", so every
+   channel must pass the RLS policies on `realtime.messages`. The room uses private channels
+   (`session:<id>`, `session:<id>:interviewers`); the policies come with the milestone 2 migration.
+9. **Change the cap** at any time, without a deploy:
    `update public.app_config set seat_cap = 150;`
 
 ## Deploy to Vercel
@@ -116,6 +123,33 @@ Visitor ──sign in (magic link / code / Google / GitHub)──► authenticat
   or unverified sign-ups can't squat seats.
 - `claim_seat()` runs on **every** sign-in. It's idempotent for members and is how waitlisted users get promoted.
 
+## How interview sessions work
+
+```
+member picks a problem ──► create_session (solo | peer, consent) ──► lobby
+                                                                       │ peer: candidate shares a one-time invite link;
+                                                                       │       interviewer signs in (no seat needed), consents, joins
+                                                                       ▼
+                            controller starts ──► in_progress: shared board, notes, chat, probes, phase timer
+                                                                       │ every action → record_event() → append-only,
+                                                                       │ hash-chained session_events → broadcast to the room
+                                                                       ▼
+                                                   end ──► review: integrity check, time per phase, transcript,
+                                                           final board, scorecards (immutable once submitted), JSON export
+```
+
+- **Everything is recorded** as an event: board deltas, notes, chat, interviewer questions, phase changes, joins,
+  consent and evaluations. Each event is chained to the previous one by SHA-256, so editing or deleting history is
+  detectable. The review page shows "Record verified".
+- **The database is the authority.** Clients can only read. Every write goes through one function that checks role
+  and session state, and the same transaction broadcasts the event, so what you see live is what was recorded.
+- **Interviewers get a private guide** (hidden requirements, numbers, probes, rubric signals) and private notes,
+  neither of which ever reaches the candidate's browser.
+- **Scorecards** follow interview-calibration practice: drafts are private, submission is final, and interviewers
+  see other evaluations only after submitting their own.
+
+Full design: [`docs/architecture/interview-sessions.md`](docs/architecture/interview-sessions.md).
+
 ## Project structure
 
 ```
@@ -127,13 +161,18 @@ src/
     auth/confirm/route.ts    Magic-link return URL
     onboarding/              First-run profile setup
     dashboard/               Home for members
+    problems/                Problem bank: list + detail/start
+    interview/               Your sessions; [id] room, [id]/review, [id]/export (JSON); join/[token]
     profile/                 Edit profile, delete account
     waitlist/                Position in line, leave waitlist
-    actions/                 Server Actions (auth, profile)
+    actions/                 Server Actions (auth, profile, interview)
     error.tsx, not-found.tsx
   components/                UI (site chrome, profile form, hero sketch…)
+    interview/               Room, whiteboard (Excalidraw), chat, phase bar, guide, evaluation form, realtime hook
   lib/
     dal.ts                   Data access layer: every auth/membership check goes through here
+    interview/               Phases, events, rubric, metrics, board merge, invite tokens, session DAL
+    problems/                Problem bank (server-only: includes interviewer guides) + ranking
     membership.ts            claim_seat + post-login routing
     profile-options.ts       Roles, levels, domains, focus areas (single source of truth)
     profile-schema.ts        Server-side validation of the profile form
@@ -141,13 +180,19 @@ src/
     supabase/                Server and browser Supabase clients
   proxy.ts                   Session refresh + coarse route guarding (Next 16's name for middleware)
 supabase/
-  migrations/                Schema, RLS, functions
+  migrations/                Schema, RLS, functions (milestone 1 foundation, milestone 2 sessions)
   tests/                     Database tests run against PGlite (in-process Postgres)
+docs/
+  milestone-2/               Plan and live progress tracker
+  adr/                       Architecture decision records (milestone 2 onwards)
+  architecture/              System design docs
 ```
 
 ## Decision log
 
 Decisions made for milestone 1, with the reasoning, so they can be revisited deliberately rather than by accident.
+From milestone 2 onwards, decisions are recorded as ADRs in [`docs/adr/`](docs/adr/) (event log, realtime,
+whiteboard, problem bank, participants, evaluation rules).
 
 | # | Decision | Why | Alternatives considered |
 | --- | --- | --- | --- |
@@ -234,6 +279,24 @@ Decisions made for milestone 1, with the reasoning, so they can be revisited del
 - Light and dark mode. The hero animation is disabled under `prefers-reduced-motion`.
 - Responsive layouts, checked at phone width (390px) and desktop.
 
+**Interview sessions** (covered by `supabase/tests/interview-sessions.test.ts` and the unit tests)
+- Two people drawing the same shape at once: merged by element version, ties broken deterministically, the same
+  way in the browser and in SQL. Stale or echoed deltas are ignored and not recorded twice.
+- Dropped realtime messages, reconnects, a sleeping laptop or a backgrounded tab: the client sees a gap in the
+  sequence numbers, or gets a reconnect or visibility event, and reads what it missed from the log.
+- Refreshing mid-interview: the page loads a consistent snapshot (board, notes, phase, events up to `last_seq`)
+  and catches up from there. Unsaved notes trigger a "leave page?" warning.
+- Ending the interview with strokes or notes still unsaved: pending saves are flushed before the session closes.
+- Invites: self-invites, reused, expired, revoked and malformed links are each rejected with a clear message; a
+  third interviewer is refused; making a new link cancels the old one; clicking your own accepted link again just
+  takes you to the room.
+- An invited interviewer signing in never takes one of the 100 seats and is never sent to the waitlist.
+- Interviewers' private notes and guide: never in the candidate's page, API responses, realtime messages or export.
+- Tampering: an edited payload, an `UPDATE` (even by the table owner), truncation and events deleted from the end
+  are all detected or blocked.
+- Account deletion: a candidate's sessions are removed; an interviewer is anonymised and the log still verifies.
+- Non-participants get a 404 for rooms, reviews and exports, so whether a session exists isn't revealed.
+
 ## Known limitations
 
 - **Waitlist promotion is lazy.** When a seat frees, the next person in line gets it the next time they sign in
@@ -244,6 +307,21 @@ Decisions made for milestone 1, with the reasoning, so they can be revisited del
 - **No admin UI yet.** Change the cap or inspect the waitlist in the Supabase SQL editor.
 - **Database types are hand-written** in `src/lib/database.types.ts`. Regenerate once a project exists:
   `npx supabase gen types typescript --project-id <ref> > src/lib/database.types.ts`.
+- **Interview room not yet tested end to end against a live Supabase project.** The SQL (functions, RLS, the
+  realtime topic rules) is tested on PGlite with a stub of the `realtime` schema; the UI builds and type-checks.
+  First thing to do once a project exists: open a peer session in two browsers.
+- **No audio/video.** Sessions record actions, not media. Participants use any call tool alongside the room.
+  Recording A/V needs a media provider (LiveKit/Daily) and a separate consent decision.
+- **Seq gaps reveal timing.** Private interviewer events share the session's sequence, so a candidate's client can
+  tell *that* (not *what*) an interviewer saved private notes. Acceptable for practice; separate sequences would
+  fix it.
+- **Problem snapshots are client-supplied to `create_session`** (built by the server action, but a member calling
+  the RPC directly could make one up). It only affects their own practice. Fix: a `problem_catalog` table (ADR 0004).
+- **Live strokes that were never saved**: if someone closes their tab within ~1.5 s of drawing, others may have seen
+  a stroke that isn't in the record. Flushes on `pagehide`/hidden tab make this rare.
+- **Excalidraw fonts load from its CDN** by default. Self-hosting them (copy to `public/` and set
+  `EXCALIDRAW_ASSET_PATH`) is a small follow-up.
+- No timeline replay scrubber yet; the log supports it.
 - No end-to-end browser tests against a live Supabase project yet. The database logic is tested against real
   Postgres (PGlite), and the pages were checked rendering without Supabase configured.
 
@@ -253,11 +331,15 @@ Decisions made for milestone 1, with the reasoning, so they can be revisited del
 npm test
 ```
 
-- `src/lib/__tests__/`: profile validation, open-redirect protection, route rules, error mapping, env parsing,
-  and a check that the option lists match the SQL constraints.
+- `src/lib/__tests__/`: profile validation, open-redirect protection, route rules (including seat-free paths),
+  error mapping, env parsing, checks that option lists, phases, event types and recommendations match the SQL, the
+  problem bank's structure (and that guides never leak into snapshots or summaries), board merging, invite tokens,
+  evaluation validation and session metrics.
 - `supabase/tests/`: runs the real migration on PGlite (Postgres compiled to WASM, in-process) with a small stub
-  of Supabase's `auth` schema, then tests seat claiming, the waitlist, RLS, grants, constraints and account
-  deletion as the `anon` and `authenticated` roles.
+  of Supabase's `auth` and `realtime` schemas, then tests seat claiming, the waitlist, RLS, grants, constraints
+  and account deletion as the `anon` and `authenticated` roles. `interview-sessions.test.ts` covers the session
+  lifecycle, the permission matrix, invites, RLS isolation, private-note leakage, realtime topic rules, the hash
+  chain (tamper detection) and evaluation release rules.
 
 ## Working on this codebase
 
@@ -275,13 +357,23 @@ npm test
 
 ## Roadmap
 
-- **Milestone 1: foundation** ✅ this branch
-- **Milestone 2: problem bank and interview room.** About 30 problems tagged by domain, role and level; a
-  whiteboard canvas; a phase timer (requirements → estimation → API and data model → high-level design → deep
-  dive → trade-offs).
+- **Milestone 1: foundation** ✅
+- **Milestone 2: problem bank and collaborative interview room** ✅ this branch. 30 problems with interviewer guides;
+  solo and peer sessions; shared Excalidraw board, notes, chat and probes; phase timer; append-only hash-chained
+  audit log; scorecards, self-assessment, review page and JSON export.
 - **Milestone 3: AI interviewer.** Phase-aware prompting that follows up on weak spots and the member's chosen
   focus areas, difficulty by level, a per-session token budget and per-user monthly cap, and scoring against a
   rubric.
 - **Milestone 4: feedback and operations.** Per-phase scores, interviewer notes, a reference design, progress over
   time, waitlist emails, an admin view (invites, usage, cost per user), session-recording consent, privacy and
   terms pages, and analytics.
+
+## Documentation
+
+| Doc | What's in it |
+| --- | --- |
+| [`USAGE_GUIDE.md`](USAGE_GUIDE.md) | Setup (hosted or local Supabase), using it as candidate/interviewer, scoring, admin tasks, troubleshooting |
+| [`docs/milestone-2/PLAN.md`](docs/milestone-2/PLAN.md) | Milestone 2 scope, assumptions, work breakdown, risks |
+| [`docs/milestone-2/PROGRESS.md`](docs/milestone-2/PROGRESS.md) | Status board and dated log |
+| [`docs/architecture/interview-sessions.md`](docs/architecture/interview-sessions.md) | Data model, lifecycle, permission matrix, audit log, realtime, limits |
+| [`docs/adr/`](docs/adr/) | Architecture decision records |
