@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ProbeWise | Collaborative Interview Platform</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #0f172a;
+      --surface: #111c3a;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --accent: #22d3ee;
+      --accent-strong: #0891b2;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: radial-gradient(circle at top, #1e293b, var(--bg) 55%);
+      color: var(--text);
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 2rem 1rem;
+    }
+
+    main {
+      width: min(900px, 100%);
+      background: color-mix(in oklab, var(--surface), black 15%);
+      border: 1px solid color-mix(in oklab, var(--muted), transparent 65%);
+      border-radius: 1rem;
+      padding: clamp(1.5rem, 3vw, 3rem);
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+    }
+
+    h1 {
+      font-size: clamp(2rem, 5vw, 3.2rem);
+      margin: 0 0 1rem;
+      line-height: 1.15;
+    }
+
+    p {
+      color: var(--muted);
+      line-height: 1.65;
+      font-size: 1.05rem;
+      margin: 0 0 1.25rem;
+    }
+
+    .eyebrow {
+      text-transform: uppercase;
+      letter-spacing: 0.11em;
+      font-weight: 700;
+      font-size: 0.75rem;
+      color: var(--accent);
+      margin-bottom: 0.75rem;
+    }
+
+    .features {
+      margin: 1.5rem 0;
+      padding: 0;
+      list-style: none;
+      display: grid;
+      gap: 0.8rem;
+    }
+
+    .features li {
+      background: color-mix(in oklab, var(--surface), black 5%);
+      border: 1px solid color-mix(in oklab, var(--muted), transparent 75%);
+      border-radius: 0.75rem;
+      padding: 0.9rem 1rem;
+    }
+
+    .cta {
+      display: inline-block;
+      margin-top: 0.5rem;
+      padding: 0.7rem 1.1rem;
+      border-radius: 999px;
+      text-decoration: none;
+      color: #00131a;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--accent), #67e8f9);
+      transition: transform 120ms ease, background-color 120ms ease;
+    }
+
+    .cta:hover {
+      transform: translateY(-1px);
+      background: linear-gradient(135deg, var(--accent-strong), var(--accent));
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="eyebrow">ProbeWise</div>
+    <h1>Interview with confidence, collaborate with precision.</h1>
+    <p>
+      ProbeWise is an interview platform built for modern technical hiring. Run collaborative system design rounds and code comprehension rounds in one focused workspace.
+    </p>
+    <ul class="features">
+      <li><strong>Collaborative system design rounds:</strong> whiteboard ideas together in real time.</li>
+      <li><strong>Code comprehension rounds:</strong> evaluate how candidates reason through unfamiliar code.</li>
+      <li><strong>Ultimate precision:</strong> structured workflows that help interviewers assess signal, not noise.</li>
+    </ul>
+    <a class="cta" href="#" aria-label="Get started with ProbeWise">Get Started</a>
+  </main>
+</body>
+</html>
