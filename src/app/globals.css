@@ -1,0 +1,196 @@
+@import "tailwindcss";
+
+/*
+ * Probewise design tokens — "whiteboard".
+ * Board = page, ink = text, marker blue = actions, probe red = the interviewer's
+ * follow-up questions (and errors). Red is reserved; don't use it as decoration.
+ */
+:root {
+  --board: #f6f8f7;
+  --board-raised: #ffffff;
+  --grid: #dce2e4;
+  --ink: #1b2431;
+  --ink-soft: #4a5566;
+  --ink-faint: #6d7889;
+  --marker: #2350c4;
+  --marker-strong: #1a3e9e;
+  --marker-wash: #e7edfb;
+  --probe: #c3352b;
+  --probe-wash: #fbeceb;
+  --pass: #1e7550;
+  --pass-wash: #e5f3ec;
+  --focus: #2350c4;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --board: #12171e;
+    --board-raised: #19202a;
+    --grid: #2a3441;
+    --ink: #e4e9ef;
+    --ink-soft: #b3bdca;
+    --ink-faint: #8a96a6;
+    --marker: #86a6f4;
+    --marker-strong: #a9c0f8;
+    --marker-wash: #1d2a47;
+    --probe: #f0857a;
+    --probe-wash: #3a1f1e;
+    --pass: #6fcf9f;
+    --pass-wash: #173328;
+    --focus: #a9c0f8;
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-board: var(--board);
+  --color-board-raised: var(--board-raised);
+  --color-grid: var(--grid);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-faint: var(--ink-faint);
+  --color-marker: var(--marker);
+  --color-marker-strong: var(--marker-strong);
+  --color-marker-wash: var(--marker-wash);
+  --color-probe: var(--probe);
+  --color-probe-wash: var(--probe-wash);
+  --color-pass: var(--pass);
+  --color-pass-wash: var(--pass-wash);
+  --font-sans: var(--font-plex), ui-sans-serif, system-ui, sans-serif;
+  --font-hand: var(--font-caveat), "Comic Sans MS", cursive;
+}
+
+html {
+  background: var(--board);
+  color: var(--ink);
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  line-height: 1.55;
+  font-feature-settings: "kern", "liga";
+  text-rendering: optimizeLegibility;
+}
+
+/* Type scale (modular, ~1.25). */
+h1, h2, h3 {
+  color: var(--ink);
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  text-wrap: balance;
+}
+h1 { font-size: clamp(2.1rem, 4.6vw, 3.3rem); line-height: 1.08; letter-spacing: -0.022em; }
+h2 { font-size: clamp(1.45rem, 2.6vw, 1.95rem); line-height: 1.2; }
+h3 { font-size: 1.12rem; line-height: 1.35; }
+p { text-wrap: pretty; }
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+::selection { background: var(--marker-wash); color: var(--ink); }
+
+@layer components {
+  .page { width: min(72rem, 100%); margin-inline: auto; padding-inline: 1.25rem; }
+  .page-narrow { width: min(42rem, 100%); margin-inline: auto; padding-inline: 1.25rem; }
+  .measure { max-width: 34rem; }
+
+  .lede { font-size: 1.15rem; line-height: 1.6; color: var(--ink-soft); }
+  .muted { color: var(--ink-soft); }
+  .faint { color: var(--ink-faint); font-size: 0.9rem; }
+  .hand { font-family: var(--font-hand); font-weight: 600; }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+    min-height: 2.75rem; padding: 0.55rem 1.15rem;
+    border-radius: 0.5rem; border: 1.5px solid transparent;
+    font-weight: 600; font-size: 0.98rem; line-height: 1.2;
+    cursor: pointer; text-decoration: none; white-space: nowrap;
+    transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+  }
+  .btn:disabled, .btn[aria-disabled="true"] { opacity: 0.55; cursor: not-allowed; }
+  .btn-primary { background: var(--marker); color: var(--board-raised); }
+  .btn-primary:hover:not(:disabled) { background: var(--marker-strong); }
+  .btn-secondary { background: var(--board-raised); color: var(--ink); border-color: var(--grid); }
+  .btn-secondary:hover:not(:disabled) { border-color: var(--ink-faint); }
+  .btn-ghost { background: transparent; color: var(--ink-soft); padding-inline: 0.6rem; }
+  .btn-ghost:hover:not(:disabled) { color: var(--ink); }
+  .btn-danger { background: transparent; color: var(--probe); border-color: var(--probe); }
+  .btn-danger:hover:not(:disabled) { background: var(--probe-wash); }
+  .btn-block { width: 100%; }
+
+  .link { color: var(--marker); text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
+  .link:hover { color: var(--marker-strong); }
+
+  /* Form controls */
+  .field { display: grid; gap: 0.4rem; align-content: start; }
+  .label { font-weight: 600; font-size: 0.95rem; }
+  .hint { font-size: 0.88rem; color: var(--ink-faint); }
+  .input {
+    width: 100%; min-height: 2.75rem; padding: 0.55rem 0.75rem;
+    background: var(--board-raised); color: var(--ink);
+    border: 1.5px solid var(--grid); border-radius: 0.5rem;
+    font: inherit;
+  }
+  .input:hover { border-color: var(--ink-faint); }
+  .input:focus-visible { outline: 2px solid var(--focus); outline-offset: 0; border-color: var(--focus); }
+  .input[aria-invalid="true"] { border-color: var(--probe); }
+  .field-error { color: var(--probe); font-size: 0.9rem; font-weight: 500; }
+
+  /* Selectable options (radio / checkbox rendered as tiles) */
+  .option {
+    position: relative; display: grid; gap: 0.15rem;
+    padding: 0.7rem 0.85rem; border-radius: 0.5rem;
+    border: 1.5px solid var(--grid); background: var(--board-raised);
+    cursor: pointer;
+  }
+  .option:hover { border-color: var(--ink-faint); }
+  .option:has(input:checked) { border-color: var(--marker); background: var(--marker-wash); }
+  .option:has(input:disabled:not(:checked)) { opacity: 0.5; cursor: not-allowed; }
+  .option:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .option input { position: absolute; opacity: 0; inset: 0; cursor: inherit; }
+  .option-title { font-weight: 600; font-size: 0.95rem; }
+  .option-hint { font-size: 0.85rem; color: var(--ink-faint); }
+
+  /* Notices */
+  .notice { padding: 0.8rem 1rem; border-radius: 0.5rem; border-left: 3px solid; font-size: 0.95rem; }
+  .notice-error { background: var(--probe-wash); border-color: var(--probe); color: var(--ink); }
+  .notice-info { background: var(--marker-wash); border-color: var(--marker); color: var(--ink); }
+  .notice-success { background: var(--pass-wash); border-color: var(--pass); color: var(--ink); }
+
+  /* A surface drawn like a section of the board. */
+  .panel {
+    background: var(--board-raised);
+    border: 1.5px solid var(--grid);
+    border-radius: 0.75rem;
+    padding: clamp(1.1rem, 3vw, 1.75rem);
+  }
+
+  .skeleton {
+    background: linear-gradient(90deg, var(--grid) 0%, var(--board) 50%, var(--grid) 100%);
+    background-size: 200% 100%;
+    animation: skeleton 1.4s ease-in-out infinite;
+    border-radius: 0.4rem;
+  }
+}
+
+@keyframes skeleton { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+
+/* The hero board draws itself once on load. */
+@keyframes draw { to { stroke-dashoffset: 0; } }
+@keyframes ink-in { from { opacity: 0; } to { opacity: 1; } }
+
+.board-stroke { stroke-dasharray: 600; stroke-dashoffset: 600; animation: draw 900ms ease-out forwards; }
+.board-ink { opacity: 0; animation: ink-in 400ms ease-out forwards; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; animation-delay: 0ms !important; transition-duration: 0.001ms !important; }
+  .board-stroke { stroke-dashoffset: 0; }
+  .board-ink { opacity: 1; }
+}
