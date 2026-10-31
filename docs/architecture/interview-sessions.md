@@ -1,6 +1,6 @@
 # Interview sessions: architecture
 
-How a live, shared, fully recorded interview works. Decisions and their alternatives are in [`docs/adr/`](../adr/);
+How a company runs a live, shared, fully recorded interview, and how it's graded. Decisions and their alternatives are in [`docs/adr/`](../adr/);
 this document describes the system as built.
 
 ## Contents
@@ -15,82 +15,107 @@ this document describes the system as built.
 - [Review and evaluation](#review-and-evaluation)
 - [Security and privacy](#security-and-privacy)
 - [Limits](#limits)
-- [Extending it (milestone 3)](#extending-it-milestone-3)
+- [Extending it](#extending-it)
 
 ## Concepts
 
 | Term | Meaning |
 | --- | --- |
-| **Session** | One interview on one problem. Mode `solo` (candidate alone) or `peer` (with 1–2 human interviewers). |
-| **Participant** | A person in a session, as `candidate` or `interviewer`. Events point at participants, not auth users. |
-| **Controller** | Who runs the clock: the candidate in solo mode, interviewers in peer mode. |
+| **Workspace** | A company's account (`organizations`). Members are `admin` or `interviewer` (ADR 0007). |
+| **Candidate** | A record the workspace manages (`candidates`): name, email, role, level, notes. Not an account. |
+| **Session** | One interview (round) of one candidate on one problem, with 1–2 interviewers. Has a round type: system design, coding or behavioural (ADR 0010). |
+| **Loop** | Several sessions for one candidate, summarised together (ADR 0012). |
+| **Rubric snapshot** | The copy of the rubric a session is graded on, taken when it's scheduled (ADR 0011). |
+| **Participant** | A person in a session, as `candidate` or `interviewer`. Interviewers are *assigned* at scheduling and *join* when they consent. Events point at participants, not auth users. |
+| **Candidate link** | The one-time link that lets the candidate in without an account (ADR 0008). |
 | **Event** | One recorded action, e.g. a board delta, a chat message, a phase change. Append-only, hash-chained. |
 | **Materialised state** | The current board, notes and phase stored on the session row, so pages load in one read. Always rebuildable from events. |
-| **Evaluation** | An interviewer's scorecard or the candidate's self-assessment. Immutable once submitted. |
+| **Scorecard** | An interviewer's grade on every aspect (six phases plus communication), a recommendation and a summary. Immutable once submitted. |
+| **AI assessment** | An advisory scorecard Claude writes from the recording (ADR 0009). |
 
 ## Data model
 
 ```
-auth.users ─┬─< interview_sessions (candidate_id) ──┬─< session_participants >── auth.users (user_id, nullable)
-            │                                       ├─< session_events          (participant_id →)
-            │                                       ├─< session_invites         (token_hash only)
-            │                                       ├─< session_interviewer_notes (one per interviewer)
-            │                                       └─< session_evaluations     (one per participant)
-            └─ profiles (milestone 1; needed to create sessions, not to join one)
+organizations ─┬─< org_members >── auth.users
+               ├─< org_invites            (token_hash only, bound to an email)
+               ├─< problems, rubrics      (the workspace's own library, ADR 0011)
+               ├─< interview_loops ─< interview_sessions.loop_id
+               └─< candidates ─< interview_sessions ─┬─< session_participants >── auth.users (nullable; anonymous for candidates)
+                                                     ├─< candidate_links        (token_hash only)
+                                                     ├─< session_events         (participant_id →)
+                                                     ├─< session_interviewer_notes (one per interviewer)
+                                                     ├─< session_evaluations    (one per interviewer)
+                                                     └─  session_ai_assessments (at most one)
 ```
 
 | Table | Key columns | Notes |
 | --- | --- | --- |
-| `interview_sessions` | `mode`, `status`, `problem_slug/version/title/snapshot`, `phase_plan`, `phase`, `phase_started_at`, `board`, `notes`, `last_seq`, `last_hash` | A CHECK keeps `status`, timestamps and phase consistent. |
-| `session_participants` | `role`, `display_name`, `consented_at` | One candidate per session (partial unique index). The name becomes "Deleted user" when the account is deleted. |
-| `session_events` | PK `(session_id, seq)`, `participant_id`, `actor_role`, `type`, `visibility`, `phase`, `payload`, `created_at`, `prev_hash`, `hash` | Updates are blocked by a trigger, truncation too. |
-| `session_invites` | `token_hash` (unique), `expires_at`, `revoked_at`, `accepted_by` | No client access at all. |
+| `organizations` | `name` | Admins rename it. Candidates who've joined one of its interviews can read the name. |
+| `org_members` | `(org_id, user_id)`, `role`, `display_name`, `email` | One workspace per account (`unique (user_id)`). |
+| `org_invites` | `email`, `role`, `token_hash`, `expires_at`, `accepted_at`, `revoked_at` | Admins read everything but `token_hash`. |
+| `candidates` | `full_name`, `email` (unique per workspace), `role_title`, `seniority`, `notes` | Plain writes under RLS; admins delete (cascades to interviews). |
+| `interview_sessions` | `org_id`, `candidate_id`, `round_type`, `rubric` (snapshot), `loop_id`, `scheduled_at`, `status`, `problem_*` (+ `problem_id` for custom), `phase_plan`, `phase`, `board`, `code`, `code_language`, `notes`, `calendar_event_id`, `meeting_url`, `last_seq`, `last_hash` | CHECKs keep status and phase consistent, and phases and the plan within the round type. |
+| `problems` | `round_type`, `title`, `prompt`, `levels`, `language`, `starter_code`, `guide`, `version`, `archived_at` | Members write; never deleted; version bumps on edit. |
+| `rubrics` | `round_type`, `name`, `aspects`, `is_default`, `archived_at` | Admins write; one default per round type. |
+| `interview_loops` | `candidate_id`, `name` | Same workspace and candidate as its rounds. |
+| `calendar_connections` | `user_id`, `account_email`, `refresh_token_ciphertext` | Service role only (ADR 0013). |
+| `session_participants` | `role`, `display_name`, `consented_at`, `joined_at` | One candidate per session. `joined_at` null = assigned interviewer who hasn't entered yet. |
+| `candidate_links` | `token_hash`, `expires_at`, `revoked_at`, `accepted_by` | No client access. |
+| `session_events` | PK `(session_id, seq)`, `participant_id`, `actor_role` (`candidate`, `interviewer`, `member`, `system`), `type`, `visibility`, `payload`, `prev_hash`, `hash` | Updates and truncation are blocked by triggers. |
 | `session_interviewer_notes` | `(session_id, participant_id)`, `body` | Readable only by the interviewer who wrote them. |
-| `session_evaluations` | `kind`, `scores` jsonb, `recommendation`, `summary`, `rubric_version`, `submitted_at` | A trigger rejects any change after submission. |
+| `session_evaluations` | `scores` jsonb keyed by aspect, `recommendation`, `summary`, `rubric_version` (2), `submitted_at` | A trigger rejects any change after submission. |
+| `session_ai_assessments` | `status`, `model`, `scores`, `recommendation`, `summary`, `strengths`, `concerns`, `error` | Written by `service_role` only. |
 
-Vocabularies (phases, event types, recommendations) are defined in TypeScript and repeated in SQL. The test
-`src/lib/__tests__/interview-sync.test.ts` fails if the two copies drift.
+Vocabularies (phases, aspects, event types, recommendations, roles, levels) are defined in TypeScript and repeated
+in SQL. `src/lib/__tests__/interview-sync.test.ts` and `profile-options-sync.test.ts` fail if the copies drift.
 
 ## Lifecycle
 
 ```
-            create_session()                 start_session()             end_session()
- (member) ───────────────────► lobby ───────────────────────► in_progress ─────────────► completed
-                                 │  accept_session_invite()       │ change_session_phase()     (completed | ended_early)
-                                 │  create/revoke invites         │ record_event()
-                                 │  chat                          │
-                                 └──────── end_session() ───────► cancelled
+ member: create_session(candidate, problem, interviewers)
+        │
+        ▼                 join_session()  (interviewers consent)
+      lobby ◄──────────── create_candidate_link() → candidate opens /join/<token> → accept_candidate_link()
+        │ start_session() (interviewer, once the candidate is in)
+        ▼
+   in_progress ── change_session_phase() · record_event() · new candidate links still work
+        │ end_session()
+        ▼
+    completed ── save_evaluation() (interviewers) · AI assessment (server)
+ (lobby → cancelled by any member or interviewer)
 ```
 
-- `end_session()` called by the controller records `completed`; called by the other side it records `ended_early`.
-  Calling it again does nothing.
-- Late interviewers can join a running session; invites are revoked when the session ends.
-- After the end, nothing can be recorded except evaluations (and interviewers' private notes, so they can finish
-  writing their evidence).
+- `end_session()` by an interviewer records `completed`; by the candidate, `ended_early`. Calling it again does
+  nothing. Members who aren't in the room can cancel from the lobby but not end a running interview.
+- Interviewers can join a running interview (up to two joined). Candidate links are revoked when it ends.
+- After the end, nothing can be recorded except scorecards, private notes and the AI assessment.
 
 ## Permission matrix
 
-Enforced in SQL by `record_event()` and the lifecycle functions. The UI mirrors it but isn't trusted.
+Enforced in SQL by the session functions. The UI mirrors it but isn't trusted.
 
-| Action | Candidate | Interviewer | When |
-| --- | --- | --- | --- |
-| Create session | ✅ (member, onboarded, ≤ 3 open) | — | — |
-| Create / revoke invite | ✅ (peer mode) | — | lobby, in progress |
-| Accept invite | ❌ (own session) | ✅ (signed in, no seat needed, ≤ 2 interviewers) | lobby, in progress |
-| Start, change phase | solo only | peer | lobby → in progress / in progress |
-| End | ✅ | ✅ | any open state |
-| `chat.message` | ✅ | ✅ | lobby, in progress |
-| `probe.asked` | ❌ | ✅ | in progress |
-| `notes.updated` | ✅ | ❌ (reads live) | in progress |
-| `board.updated` | ✅ | ✅ | in progress |
-| `interviewer_note.updated` | ❌ | ✅ (private) | not cancelled |
-| Save evaluation draft | ✅ self | ✅ scorecard | in progress, completed |
-| Submit evaluation | ✅ | ✅ | completed only, once |
+| Action | Candidate | Interviewer (joined) | Member (not in the room) | When |
+| --- | --- | --- | --- | --- |
+| Schedule an interview | — | ✅ | ✅ | — |
+| Join as interviewer | — | (assigned: consent) | ✅ while < 2 joined | lobby, in progress |
+| Create / revoke candidate link | ❌ | ✅ | ✅ | lobby, in progress |
+| Accept candidate link | ✅ (anyone not in the workspace) | ❌ | ❌ | lobby, in progress |
+| Start, change phase | ❌ | ✅ | ❌ | lobby → in progress / in progress |
+| Cancel (lobby) / end (running) | ❌ / ✅ early | ✅ / ✅ | ✅ / ❌ | open states |
+| `chat.message` | ✅ | ✅ | ❌ | lobby, in progress |
+| `probe.asked` | ❌ | ✅ | ❌ | in progress |
+| `notes.updated` | ✅ | ❌ (reads live) | ❌ | in progress |
+| `board.updated` (system design) | ✅ | ✅ | ❌ | in progress |
+| `code.updated` (coding) | ✅ | ❌ (watches live) | ❌ | in progress |
+| `interviewer_note.updated` | ❌ | ✅ (private) | ❌ | not cancelled |
+| Save scorecard draft / submit | ❌ | ✅ / ✅ once | ❌ | in progress, completed / completed |
+| Request AI assessment | ❌ | ✅ | ✅ | completed |
 
-Reads (RLS): participants read their sessions, participants and `all`-visibility events; interviewers also read
-`interviewers`-visibility events. Private notes are readable only by their author. Evaluations follow the release
-rules in ADR 0006. Non-participants get nothing, and the app returns 404, so it doesn't reveal whether a session
-exists.
+Reads (RLS): joined participants read their session, its participants and `all`-visibility events; the whole
+workspace reads the workspace's sessions and every event. Candidate records, scorecards and AI assessments are
+never readable by the candidate. Submitted scorecards and the AI assessment are readable by the workspace, except
+by an interviewer who took part and hasn't submitted yet (ADR 0006). Other workspaces get nothing, and the app
+returns 404.
 
 ## Recording: the audit log
 
@@ -114,14 +139,16 @@ it. Tests cover a rewritten payload, an update attempt by the table owner, and t
 
 | Event | Payload |
 | --- | --- |
-| `session.created` | mode, problem slug/version/title, phase plan |
-| `participant.joined`, `consent.given` | role, display name; consent version |
-| `invite.created`, `invites.revoked` | expiry; count (never the token or its hash) |
+| `session.created` | who scheduled it, problem slug/version/title, phase plan, interviewers, scheduled time |
+| `participant.joined`, `consent.given` | role, display name, `rejoined` (candidate switched device); consent version |
+| `candidate_link.created`, `candidate_links.revoked` | expiry, who; count (never the token or its hash) |
 | `session.started`, `phase.changed`, `session.ended` | from/to phase, time in previous phase; reason, final phase, duration |
 | `chat.message`, `probe.asked` | text |
 | `notes.updated`, `interviewer_note.updated` | full text snapshot (only when changed) |
-| `board.updated` | changed Excalidraw elements (deltas) |
-| `evaluation.submitted` | evaluation id, kind, SHA-256 of the submitted content |
+| `board.updated` | changed Excalidraw elements (deltas), system design only |
+| `code.updated` | full code text and language (candidate only, coding only) |
+| `evaluation.submitted` | evaluation id, SHA-256 of the submitted content (interviewers only) |
+| `ai_assessment.completed` | model, SHA-256 of the content (interviewers only, written by the server) |
 
 ## Realtime
 
@@ -171,30 +198,36 @@ InterviewRoom (room.tsx)
 
 ## Review and evaluation
 
-`/interview/<id>/review` (server-rendered, read as the viewer):
+`/interview/<id>/review` (server-rendered, read as the viewer, hiring team only):
 
-- Integrity badge (`verify_session_log`) and the JSON export (`/interview/<id>/export`, RLS-scoped).
-- Evaluation form: per-phase score 1–4 with evidence, plus a recommendation (scorecards) and a summary. Drafts are
-  private; submission is final.
-- Time per phase vs plan, probes, board edits and messages per phase, the path taken through the phases, and when
-  the first thing was drawn. Computed by `computeMetrics()` from the log.
-- Final board (read-only Excalidraw), notes, transcript, the reference outline from the problem guide, and the full
-  event table.
+- Integrity badge (`verify_session_log`) and the JSON export (`/interview/<id>/export`, RLS-scoped, team only).
+- **Scorecard**: each joined interviewer scores every aspect (six phases plus communication) 1–4 with evidence,
+  picks a recommendation and writes a summary. Drafts are private; submission is final.
+- **Comparison**: once unlocked, every submitted scorecard and the AI assessment side by side, per aspect, with a
+  "split" marker where scores differ by two or more.
+- **AI assessment** (ADR 0009): generated on request; the card shows its scores with evidence, strengths, concerns
+  and what it couldn't see.
+- Time per phase vs plan, probes, board edits and messages per phase, the path through the phases, the final
+  board, notes, transcript, the reference outline and the full event table.
+
+The candidate's room ends with a thank-you from the company; there's no review page for them.
 
 ## Security and privacy
 
-- **Least privilege**: clients have `SELECT` only. All writes go through `security definer` functions with
-  `search_path = ''`. Internal functions (`append_session_event`, hash helpers, `merge_board`) aren't executable by
-  `authenticated`.
-- **Confidential guide**: problem guides live in a `server-only` module and are passed to the room only when the
-  viewer is an interviewer. The candidate's page payload never contains them.
-- **Invites**: 256-bit random tokens; only their SHA-256 is stored; single use; 7-day expiry; revoked on renewal
-  or when the session ends; malformed tokens are rejected before any database call.
-- **Seats**: invite and room paths skip `claim_seat()` after sign-in, so interviewers never take a candidate seat
-  or land on the waitlist.
-- **Consent**: required to create or join a session; stored on the participant and as an event.
-- **Deletion**: a candidate deleting their account removes their sessions entirely. An interviewer deleting theirs
-  is anonymised ("Deleted user"); the log stays verifiable because events reference participant ids.
+- **Least privilege**: clients have `SELECT` on session tables only; candidates get column-limited writes under RLS.
+  All session writes go through `security definer` functions with `search_path = ''`. Internal functions aren't
+  executable by `authenticated`; AI assessment writers are executable by `service_role` only.
+- **Workspace isolation**: every policy goes through `is_org_member`, `session_org_member` or `session_role`.
+  Tested across two workspaces.
+- **Candidates**: an anonymous session that only opens the room (proxy, DAL and SQL all check). They never receive
+  the interviewer guide (server-only module), private notes, candidate records, scorecards or the AI assessment.
+- **Links**: 256-bit random tokens; only SHA-256 stored; single use; candidate links last 24 hours and are revoked
+  when replaced or when the interview ends; team invites last 7 days and are bound to an email address.
+- **Consent**: recorded for every participant (candidate on join, interviewer on entering) as a column and an event.
+- **Deletion**: deleting a candidate (admins) removes their interviews. An interviewer deleting their account is
+  anonymised ("Deleted user") and the log stays verifiable. The last member takes the workspace with them; the last
+  admin of a team must hand over first.
+- **AI**: only the recorded, candidate-visible material is sent to the Claude API. No private notes or scorecards.
 - **Error hygiene**: database messages are shown only for our own SQLSTATEs; anything else becomes a generic
   message.
 
@@ -202,8 +235,9 @@ InterviewRoom (room.tsx)
 
 | Limit | Value | Where |
 | --- | --- | --- |
-| Open sessions per candidate | 3 | `create_session` |
-| Interviewers per session | 2 | `create_session_invite`, `accept_session_invite` |
+| People per workspace | 50 | `create_org_invite` |
+| Open interviews per candidate | 3 | `create_session` |
+| Interviewers per session | 2 assigned, 2 joined | `create_session`, `join_session` |
 | Events per session | 10,000 | `append_session_event` |
 | Event payload | 256 KB | CHECK |
 | Board elements per update / total | 500 / 3,000 | `record_event` |
@@ -211,13 +245,15 @@ InterviewRoom (room.tsx)
 | Notes / private notes | 20,000 chars | CHECK, `record_event` |
 | Chat / probe | 2,000 / 1,000 chars | `record_event` |
 | Evidence per phase / summary | 2,000 / 5,000 chars | `save_evaluation`, zod |
-| Invite lifetime | ≤ 7 days | `create_session_invite` |
+| Candidate link lifetime | 24 h default, ≤ 7 days | `create_candidate_link` |
+| Team invite lifetime | 7 days | `create_org_invite` |
 
-## Extending it (milestone 3)
+## Extending it
 
 - **AI interviewer**: join as an `interviewer` participant (a service identity) and call the same functions:
   `probe.asked`, `change_session_phase`, `save_evaluation`. The permission matrix and the log don't change.
-- **Automated scoring**: `computeMetrics()` plus the event log (with board deltas) is the input. Human scorecards
-  (`rubric_version`) give labelled data to calibrate against.
+- **Calibration**: human scorecards and the AI assessment share `rubric_version`, so agreement per aspect can be
+  tracked across interviews.
 - **Replay**: board deltas in `seq` order rebuild the board at any point (`mergeBoard`). A scrubber UI only needs to
   fold events up to the selected `seq`.
+- **Email**: candidate links and team invites are copied by hand today; transactional email can send them.

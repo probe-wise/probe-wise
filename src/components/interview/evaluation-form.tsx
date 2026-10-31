@@ -3,23 +3,26 @@
 import { useState, useTransition } from "react";
 import { saveEvaluation, type EvaluationState } from "@/app/actions/interview";
 import type { SessionEvaluationRow } from "@/lib/database.types";
-import { PHASES, type Phase } from "@/lib/interview/phases";
-import { RECOMMENDATIONS, RUBRIC, SCORES, type Recommendation, type Scores } from "@/lib/interview/rubric";
+import { RECOMMENDATIONS, SCORES, type AspectScore, type Recommendation } from "@/lib/interview/rubric";
+import type { Rubric } from "@/lib/interview/rounds";
 
 type Props = {
   sessionId: string;
-  kind: "scorecard" | "self";
   draft: SessionEvaluationRow | null;
-  /** Phases the session actually reached; others default to "not reached". */
-  reached: Phase[];
+  /** The rubric this interview is graded on (its snapshot). */
+  rubric: Rubric;
+  /** The round's phases; aspects named after a phase that wasn't reached are marked. */
+  phaseKeys: string[];
+  reached: string[];
 };
 
-export function EvaluationForm({ sessionId, kind, draft, reached }: Props) {
-  const [scores, setScores] = useState<Scores>(() => {
-    const initial: Scores = {};
-    for (const p of PHASES) {
-      const d = draft?.scores?.[p.value];
-      initial[p.value] = { score: (d?.score as 1 | 2 | 3 | 4 | null) ?? null, evidence: d?.evidence ?? "" };
+/** An interviewer's scorecard: every aspect of the rubric, a recommendation and a summary. */
+export function EvaluationForm({ sessionId, draft, rubric, phaseKeys, reached }: Props) {
+  const [scores, setScores] = useState<Record<string, AspectScore>>(() => {
+    const initial: Record<string, AspectScore> = {};
+    for (const a of rubric.aspects) {
+      const d = draft?.scores?.[a.key];
+      initial[a.key] = { score: (d?.score as 1 | 2 | 3 | 4 | null) ?? null, evidence: d?.evidence ?? "" };
     }
     return initial;
   });
@@ -34,9 +37,8 @@ export function EvaluationForm({ sessionId, kind, draft, reached }: Props) {
   const submit = (final: boolean) =>
     startTransition(async () => {
       const res = await saveEvaluation(sessionId, {
-        kind,
         scores,
-        recommendation: kind === "scorecard" ? recommendation : null,
+        recommendation,
         summary,
         submit: final,
       });
@@ -44,26 +46,26 @@ export function EvaluationForm({ sessionId, kind, draft, reached }: Props) {
       setConfirming(false);
     });
 
-  const setPhase = (phase: Phase, patch: Partial<{ score: 1 | 2 | 3 | 4 | null; evidence: string }>) =>
-    setScores((s) => ({ ...s, [phase]: { score: null, evidence: "", ...s[phase], ...patch } }));
+  const setAspect = (aspect: string, patch: Partial<{ score: 1 | 2 | 3 | 4 | null; evidence: string }>) =>
+    setScores((s) => ({ ...s, [aspect]: { ...(s[aspect] ?? { score: null, evidence: "" }), ...patch } }));
 
   const errors = state.status === "error" ? (state.fieldErrors ?? {}) : {};
 
   return (
     <form className="grid gap-6" onSubmit={(e) => e.preventDefault()}>
       <p className="muted">
-        {kind === "scorecard"
-          ? "Score what you saw, with evidence. Once submitted, the candidate sees it and it can't be changed. Other scorecards unlock for you after you submit."
-          : "Score yourself honestly against the rubric before you look at anyone else's view. Submitting is final."}
+        Score what you saw, with evidence. Your team sees it once you submit, and it can&apos;t be changed after that.
+        Other scorecards and the AI assessment unlock for you when you submit yours. The candidate never sees it.
       </p>
 
-      {PHASES.map((p) => {
+      {rubric.aspects.map((a) => {
+        const p = { value: a.key, label: a.label };
         const value = scores[p.value];
-        const wasReached = reached.includes(p.value);
+        const wasReached = !phaseKeys.includes(p.value) || reached.includes(p.value);
         return (
           <fieldset key={p.value} className="grid gap-2 border-t border-grid pt-4">
             <legend className="font-semibold">
-              {p.label} <span className="faint font-normal">· {RUBRIC[p.value].assesses}</span>
+              {p.label} {a.assesses ? <span className="faint font-normal">· {a.assesses}</span> : null}
               {!wasReached ? <span className="faint font-normal"> · not reached</span> : null}
             </legend>
             <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={`${p.label} score`}>
@@ -73,7 +75,7 @@ export function EvaluationForm({ sessionId, kind, draft, reached }: Props) {
                     type="radio"
                     name={`score-${p.value}`}
                     checked={value?.score === s.value}
-                    onChange={() => setPhase(p.value, { score: s.value })}
+                    onChange={() => setAspect(p.value, { score: s.value })}
                   />
                   <span className="option-title">
                     {s.value} · {s.label}
@@ -83,7 +85,7 @@ export function EvaluationForm({ sessionId, kind, draft, reached }: Props) {
               <button
                 type="button"
                 className="btn btn-ghost text-[0.85rem]"
-                onClick={() => setPhase(p.value, { score: null })}
+                onClick={() => setAspect(p.value, { score: null })}
                 disabled={value?.score == null}
               >
                 Clear
@@ -98,15 +100,14 @@ export function EvaluationForm({ sessionId, kind, draft, reached }: Props) {
               maxLength={2000}
               placeholder="Evidence: what was said or drawn, and when"
               value={value?.evidence ?? ""}
-              onChange={(e) => setPhase(p.value, { evidence: e.target.value })}
+              onChange={(e) => setAspect(p.value, { evidence: e.target.value })}
             />
           </fieldset>
         );
       })}
       {errors.scores ? <p className="field-error">{errors.scores}</p> : null}
 
-      {kind === "scorecard" ? (
-        <fieldset className="grid gap-2">
+      <fieldset className="grid gap-2">
           <legend className="label mb-1">Overall recommendation</legend>
           <div className="flex flex-wrap gap-2">
             {RECOMMENDATIONS.map((r) => (
@@ -123,12 +124,11 @@ export function EvaluationForm({ sessionId, kind, draft, reached }: Props) {
           </div>
           <p className="hint">For the level they&apos;re targeting. There&apos;s no “maybe”: pick the side you&apos;d argue for.</p>
           {errors.recommendation ? <p className="field-error">{errors.recommendation}</p> : null}
-        </fieldset>
-      ) : null}
+      </fieldset>
 
       <div className="field">
         <label htmlFor="summary" className="label">
-          {kind === "scorecard" ? "Summary for the candidate" : "What went well, and what you'd do differently"}
+          Summary for the hiring team
         </label>
         <textarea
           id="summary"

@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { authErrorMessage } from "@/lib/auth-errors";
 import { isSupabaseConfigured } from "@/lib/env";
-import { claimSeatAndRoute, requestOrigin } from "@/lib/membership";
+import { routeAfterSignIn, requestOrigin } from "@/lib/membership";
 import { safeNextPath } from "@/lib/safe-redirect";
 import { createClient } from "@/lib/supabase/server";
 
@@ -77,7 +77,7 @@ export async function verifyEmailCode(_prev: EmailAuthState, formData: FormData)
     return { status: "error", step: "code", email: email.data, message: authErrorMessage(error) };
   }
 
-  const destination = await claimSeatAndRoute(supabase, String(formData.get("next") ?? ""));
+  const destination = await routeAfterSignIn(supabase, String(formData.get("next") ?? ""));
   redirect(destination);
 }
 

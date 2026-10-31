@@ -83,7 +83,7 @@ describe("session error mapping", () => {
 });
 
 describe("evaluation schema", () => {
-  const base = { kind: "scorecard" as const, scores: { requirements: { score: 3, evidence: "Good" } }, recommendation: "yes", summary: "Solid", submit: true };
+  const base = { scores: { requirements: { score: 3, evidence: "Good" } }, recommendation: "yes", summary: "Solid", submit: true };
   it("accepts a complete scorecard", () => {
     expect(evaluationSchema.safeParse(base).success).toBe(true);
   });
@@ -92,10 +92,13 @@ describe("evaluation schema", () => {
     expect(evaluationSchema.safeParse({ ...base, summary: "  " }).success).toBe(false);
     expect(evaluationSchema.safeParse({ ...base, recommendation: null, summary: "", submit: false }).success).toBe(true);
   });
-  it("rejects unknown phases, out-of-range scores and recommendations on self-assessments", () => {
-    expect(evaluationSchema.safeParse({ ...base, scores: { lunch: { score: 3, evidence: "" } } }).success).toBe(false);
+  // Which aspects exist depends on the session's rubric snapshot; the database checks that (scores_valid).
+  it("rejects malformed aspect keys and out-of-range scores", () => {
+    expect(evaluationSchema.safeParse({ ...base, scores: { "Not a key": { score: 3, evidence: "" } } }).success).toBe(false);
     expect(evaluationSchema.safeParse({ ...base, scores: { requirements: { score: 5, evidence: "" } } }).success).toBe(false);
-    expect(evaluationSchema.safeParse({ ...base, kind: "self" }).success).toBe(false);
+  });
+  it("grades communication as well as every phase", () => {
+    expect(evaluationSchema.safeParse({ ...base, scores: { communication: { score: 4, evidence: "Clear" } } }).success).toBe(true);
   });
   it("averages only scored phases", () => {
     expect(averageScore({ requirements: { score: 3, evidence: "" }, deep_dive: { score: 2, evidence: "" }, tradeoffs: { score: null, evidence: "" } })).toBe(2.5);

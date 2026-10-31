@@ -1,11 +1,25 @@
-// Scoring rubric (ADR 0006). Shared by interviewer scorecards and self-assessments,
-// and by the automated scorer in milestone 3. Bump RUBRIC_VERSION when the meaning
-// of a score changes; it's stored on every evaluation.
+// Scoring rubric (ADR 0006). Shared by interviewer scorecards and the AI assessment
+// (ADR 0009). Bump RUBRIC_VERSION when the meaning of a score changes; it's stored on
+// every scorecard.
 
 import { z } from "zod";
-import { PHASE_VALUES, type Phase } from "@/lib/interview/phases";
+import { PHASES, type Phase } from "@/lib/interview/phases";
 
-export const RUBRIC_VERSION = 1;
+/** v2: added communication as an aspect; scorecards are interviewer-only. */
+export const RUBRIC_VERSION = 2;
+
+/**
+ * What a scorecard grades: each phase of the interview, plus communication across the
+ * whole session. The SQL function public.evaluation_aspects() repeats this list.
+ */
+export const ASPECTS = [
+  ...PHASES.map((p) => ({ value: p.value, label: p.label })),
+  { value: "communication", label: "Communication" },
+] as const;
+
+export type Aspect = Phase | "communication";
+export const ASPECT_VALUES = ASPECTS.map((a) => a.value) as [Aspect, ...Aspect[]];
+export const aspectLabel = (aspect: string) => ASPECTS.find((a) => a.value === aspect)?.label ?? aspect;
 
 export const SCORES = [
   { value: 1, label: "No signal", hint: "Didn't get there, or the approach wouldn't work." },
@@ -24,8 +38,8 @@ export const RECOMMENDATIONS = [
 
 export type Recommendation = (typeof RECOMMENDATIONS)[number]["value"];
 
-/** What each phase assesses, and what a 3 ("solid") looks like. */
-export const RUBRIC: Record<Phase, { assesses: string; solid: string[] }> = {
+/** What each aspect assesses, and what a 3 ("solid") looks like. */
+export const RUBRIC: Record<Aspect, { assesses: string; solid: string[] }> = {
   requirements: {
     assesses: "Scoping and clarifying before designing",
     solid: [
@@ -74,43 +88,51 @@ export const RUBRIC: Record<Phase, { assesses: string; solid: string[] }> = {
       "Proposes sensible next steps",
     ],
   },
+  communication: {
+    assesses: "Clarity and collaboration throughout",
+    solid: [
+      "Thinks out loud and keeps the interviewer oriented",
+      "Takes hints and pushback well; changes course when wrong",
+      "Structures the discussion and manages the time",
+    ],
+  },
 };
 
-const phaseScore = z.object({
+const aspectScore = z.object({
   score: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]).nullable(),
   evidence: z.string().trim().max(2000, "Keep evidence under 2,000 characters."),
 });
 
-export type PhaseScore = z.infer<typeof phaseScore>;
-export type Scores = Partial<Record<Phase, PhaseScore>>;
+export type AspectScore = z.infer<typeof aspectScore>;
+/** Keyed by the aspect keys of the session's rubric (built-in or custom). */
+export type Scores = Partial<Record<string, AspectScore>>;
+
+export const ASPECT_KEY = /^[a-z][a-z0-9_]{0,39}$/;
+
+const recommendationSchema = z.enum(RECOMMENDATIONS.map((r) => r.value) as [Recommendation, ...Recommendation[]]);
 
 export const evaluationSchema = z
   .object({
-    kind: z.enum(["scorecard", "self"]),
-    scores: z.partialRecord(z.enum(PHASE_VALUES), phaseScore),
-    recommendation: z.enum(RECOMMENDATIONS.map((r) => r.value) as [Recommendation, ...Recommendation[]]).nullable(),
+    // The database checks the keys against the session's rubric (scores_valid).
+    scores: z.record(z.string().regex(ASPECT_KEY, "Unknown aspect."), aspectScore),
+    recommendation: recommendationSchema.nullable(),
     summary: z.string().trim().max(5000, "Keep the summary under 5,000 characters."),
     submit: z.boolean(),
   })
   .superRefine((v, ctx) => {
-    if (v.kind === "self" && v.recommendation) {
-      ctx.addIssue({ code: "custom", path: ["recommendation"], message: "A self-assessment has no recommendation." });
-    }
     if (!v.submit) return;
     if (!Object.values(v.scores).some((s) => s?.score != null)) {
-      ctx.addIssue({ code: "custom", path: ["scores"], message: "Score at least one phase before submitting." });
+      ctx.addIssue({ code: "custom", path: ["scores"], message: "Score at least one aspect before submitting." });
     }
-    if (v.kind === "scorecard") {
-      if (!v.recommendation) {
-        ctx.addIssue({ code: "custom", path: ["recommendation"], message: "Choose a recommendation." });
-      }
-      if (!v.summary) ctx.addIssue({ code: "custom", path: ["summary"], message: "Write a short summary." });
+    if (!v.recommendation) {
+      ctx.addIssue({ code: "custom", path: ["recommendation"], message: "Choose a recommendation." });
     }
+    if (!v.summary) ctx.addIssue({ code: "custom", path: ["summary"], message: "Write a short summary." });
   });
 
 export type EvaluationInput = z.infer<typeof evaluationSchema>;
 
-/** Average of the scored phases, or null when nothing is scored. */
+/** Average of the scored aspects, or null when nothing is scored. */
 export function averageScore(scores: Scores) {
   const values = Object.values(scores)
     .map((s) => s?.score)
@@ -124,3 +146,40 @@ export const scoreLabel = (score: number | null | undefined) =>
 
 export const recommendationLabel = (value: string | null | undefined) =>
   RECOMMENDATIONS.find((r) => r.value === value)?.label ?? "";
+
+/** A custom rubric, as admins write it (ADR 0011). Mirrors public.rubric_valid(). */
+export const rubricSchema = z
+  .object({
+    name: z.string().trim().min(1, "Name the rubric.").max(80, "Keep the name under 80 characters."),
+    aspects: z
+      .array(
+        z.object({
+          key: z.string().regex(ASPECT_KEY, "Keys are lowercase letters, digits and underscores."),
+          label: z.string().trim().min(1, "Every aspect needs a name.").max(60, "Keep aspect names under 60 characters."),
+          assesses: z.string().trim().max(300, "Keep the description under 300 characters."),
+          solid: z.array(z.string().trim().min(1).max(300)).max(8, "Up to 8 signals per aspect."),
+        }),
+      )
+      .min(1, "Add at least one aspect.")
+      .max(12, "Up to 12 aspects."),
+  })
+  .superRefine((r, ctx) => {
+    const keys = r.aspects.map((a) => a.key);
+    if (new Set(keys).size !== keys.length) {
+      ctx.addIssue({ code: "custom", path: ["aspects"], message: "Two aspects have the same name." });
+    }
+  });
+
+export type RubricInput = z.infer<typeof rubricSchema>;
+
+/** "Code quality & tests" → "code_quality_tests": a stable key from an aspect's name. */
+export function aspectKey(label: string) {
+  const k = label
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "") // accents: é → e
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 40);
+  return /^[a-z]/.test(k) ? k : `a_${k}`.slice(0, 40);
+}

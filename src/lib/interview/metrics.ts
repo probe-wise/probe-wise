@@ -2,10 +2,10 @@
 // milestone 3's scorer all derive the same numbers from the same events.
 
 import type { SessionEvent } from "@/lib/interview/events";
-import { PHASE_VALUES, type Phase, type PhasePlan } from "@/lib/interview/phases";
+import { PHASE_VALUES } from "@/lib/interview/phases";
 
 export type PhaseStats = {
-  phase: Phase;
+  phase: string;
   plannedMs: number;
   actualMs: number;
   visits: number;
@@ -13,6 +13,7 @@ export type PhaseStats = {
   chatMessages: number;
   notesEdits: number;
   boardEdits: number;
+  codeEdits: number;
 };
 
 export type SessionMetrics = {
@@ -22,7 +23,7 @@ export type SessionMetrics = {
   plannedMs: number;
   phases: PhaseStats[];
   /** Phase order as it actually happened (repeats when someone went back). */
-  path: Phase[];
+  path: string[];
   firstBoardEditMs: number | null;
   probes: number;
   chatMessages: number;
@@ -31,24 +32,26 @@ export type SessionMetrics = {
 
 const ms = (iso: string) => new Date(iso).getTime();
 
+/** `order` is the round's phase order (defaults to system design). */
 export function computeMetrics(
   events: readonly SessionEvent[],
-  plan: PhasePlan,
+  plan: Record<string, number>,
   now: string = new Date().toISOString(),
+  order: readonly string[] = PHASE_VALUES,
 ): SessionMetrics {
   const sorted = [...events].sort((a, b) => a.seq - b.seq);
-  const phases = new Map<Phase, PhaseStats>(
-    PHASE_VALUES.map((p) => [
+  const phases = new Map<string, PhaseStats>(
+    order.map((p) => [
       p,
-      { phase: p, plannedMs: plan[p] * 60_000, actualMs: 0, visits: 0, probes: 0, chatMessages: 0, notesEdits: 0, boardEdits: 0 },
+      { phase: p, plannedMs: (plan[p] ?? 0) * 60_000, actualMs: 0, visits: 0, probes: 0, chatMessages: 0, notesEdits: 0, boardEdits: 0, codeEdits: 0 },
     ]),
   );
   const byParticipant: SessionMetrics["byParticipant"] = {};
-  const path: Phase[] = [];
+  const path: string[] = [];
 
   let startedAt: string | null = null;
   let endedAt: string | null = null;
-  let current: { phase: Phase; since: string } | null = null;
+  let current: { phase: string; since: string } | null = null;
   let firstBoardEditMs: number | null = null;
 
   const closeCurrent = (at: string) => {
@@ -65,7 +68,7 @@ export function computeMetrics(
         startedAt = e.created_at;
         break;
       case "phase.changed": {
-        const to = e.payload.to as Phase;
+        const to = String(e.payload.to);
         if (!phases.has(to)) break;
         closeCurrent(e.created_at);
         current = { phase: to, since: e.created_at };
@@ -88,6 +91,9 @@ export function computeMetrics(
       case "notes.updated":
         if (stats) stats.notesEdits += 1;
         if (who) who.notesEdits += 1;
+        break;
+      case "code.updated":
+        if (stats) stats.codeEdits += 1;
         break;
       case "board.updated":
         if (stats) stats.boardEdits += 1;

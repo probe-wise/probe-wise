@@ -2,6 +2,10 @@
 
 Live tracker for [PLAN.md](./PLAN.md). Newest log entries first.
 
+> **Superseded 2026-10-31:** the product became a company platform. The room, audit log and realtime design carry
+> over; modes, interviewer invites and self-assessment are gone. Current tracker:
+> [`docs/company-platform/PROGRESS.md`](../company-platform/PROGRESS.md).
+
 ## Status board
 
 | # | Workstream | Status | Notes |

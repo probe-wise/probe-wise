@@ -3,33 +3,23 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { headers } from "next/headers";
 import type { Database } from "@/lib/database.types";
 import { configuredSiteUrl } from "@/lib/env";
-import { isSeatFreePath } from "@/lib/routes";
+import { isWorkspaceFreePath } from "@/lib/routes";
 import { safeNextPath } from "@/lib/safe-redirect";
 
 /**
- * Run right after a successful sign-in. Claims a seat if one is free (idempotent for
- * existing members) and decides where the user should land.
+ * Run right after a successful sign-in: decides where the user lands. People without
+ * a workspace create one first, unless they're on their way to accept a team invite.
  */
-export async function claimSeatAndRoute(supabase: SupabaseClient<Database>, next: string | null | undefined) {
-  // Invite links and interview rooms don't need a seat: don't claim one (or waitlist) on the way there.
+export async function routeAfterSignIn(supabase: SupabaseClient<Database>, next: string | null | undefined) {
   const destination = safeNextPath(next);
-  if (isSeatFreePath(destination)) return destination;
-
-  const { data: status, error } = await supabase.rpc("claim_seat");
-  if (error) {
-    console.error("claim_seat failed", error);
-    return "/waitlist?error=seat_check_failed";
-  }
-  if (status === "waitlisted") return "/waitlist";
-
-  const { data: profile } = await supabase.from("profiles").select("onboarding_completed_at").maybeSingle();
-  if (!profile?.onboarding_completed_at) return "/onboarding";
-  return destination;
+  if (isWorkspaceFreePath(destination)) return destination;
+  const { data: member } = await supabase.from("org_members").select("org_id").maybeSingle();
+  return member ? destination : "/onboarding";
 }
 
 /**
- * Origin used to build email/OAuth redirect URLs. Prefer NEXT_PUBLIC_SITE_URL in
- * production so a spoofed Host header can't redirect magic links elsewhere
+ * Origin used to build email/OAuth redirect URLs and invite links. Prefer
+ * NEXT_PUBLIC_SITE_URL in production so a spoofed Host header can't redirect links elsewhere
  * (Supabase also rejects URLs that aren't on its redirect allow-list).
  */
 export async function requestOrigin() {

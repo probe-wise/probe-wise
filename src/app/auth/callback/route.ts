@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { authErrorCode, callbackErrorCode } from "@/lib/auth-errors";
 import { configuredSiteUrl, isSupabaseConfigured } from "@/lib/env";
-import { claimSeatAndRoute } from "@/lib/membership";
+import { routeAfterSignIn } from "@/lib/membership";
 import { safeNextPath } from "@/lib/safe-redirect";
 import { createClient } from "@/lib/supabase/server";
 
@@ -25,6 +25,6 @@ export async function GET(request: NextRequest) {
   const { error } = await supabase.auth.exchangeCodeForSession(code);
   if (error) return toLogin(authErrorCode(error));
 
-  const destination = await claimSeatAndRoute(supabase, next);
+  const destination = await routeAfterSignIn(supabase, next);
   return NextResponse.redirect(new URL(destination, origin));
 }

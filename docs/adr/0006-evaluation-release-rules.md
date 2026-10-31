@@ -1,6 +1,8 @@
 # 0006. Scorecards: immutable once submitted, released without anchoring
 
-- Status: Accepted
+- Status: Accepted, amended 2026-10-31 by [0007](0007-company-workspaces.md) and [0009](0009-ai-assessment.md):
+  scorecards are interviewer-only (no self-assessment), the candidate never sees them, the workspace reads submitted
+  ones, and the AI assessment follows the same release rule
 - Date: 2026-10-30
 
 ## Context

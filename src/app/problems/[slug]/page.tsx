@@ -2,10 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
-import { StartSessionForm } from "@/components/interview/start-session-form";
+import { InterviewerGuide } from "@/components/interview/interviewer-guide";
 import { requireMember } from "@/lib/dal";
-import { PHASES, phasePlanFor, totalMinutes } from "@/lib/interview/phases";
-import { getProblem } from "@/lib/problems/catalog";
+import { roundOf, roundPlanFor } from "@/lib/interview/rounds";
+import { getProblem, roundTypeOf } from "@/lib/problems/catalog";
 import { domainLabel } from "@/lib/problems/labels";
 import { SENIORITY_LEVELS, labelFor } from "@/lib/profile-options";
 
@@ -25,10 +25,13 @@ export default function ProblemPage({ params }: { params: Params }) {
 
 async function ProblemDetail({ params }: { params: Params }) {
   const { slug } = await params;
-  const { profile } = await requireMember(`/problems/${slug}`);
+  await requireMember(`/problems/${slug}`);
   const problem = getProblem(slug);
   if (!problem) notFound();
-  const plan = phasePlanFor(profile.seniority);
+  const level = problem.levels.includes("senior") ? "senior" : problem.levels[0];
+  const round = roundOf(roundTypeOf(problem));
+  const plan = roundPlanFor(round.value, level);
+  const total = Object.values(plan).reduce((a, b) => a + b, 0);
 
   return (
     <div className="grid gap-10 lg:grid-cols-[1.5fr_1fr]">
@@ -37,20 +40,27 @@ async function ProblemDetail({ params }: { params: Params }) {
           ← All problems
         </Link>
         <p className="faint">
-          {domainLabel(problem.domain)} ·{" "}
+          {round.label}
+          {round.value === "system_design" ? ` · ${domainLabel(problem.domain)}` : ""} ·{" "}
           {problem.levels.map((l) => labelFor(SENIORITY_LEVELS, l)).join(", ")}
         </p>
         <h1 className="text-[2.2rem]!">{problem.title}</h1>
         <p className="lede">{problem.prompt}</p>
         <p className="muted">Expect follow-ups on {problem.focus.toLowerCase()}.</p>
+        {problem.starterCode ? (
+          <pre className="overflow-auto rounded-lg border border-grid bg-board-raised p-3 font-mono text-[0.85rem]">{problem.starterCode}</pre>
+        ) : null}
 
         <section className="grid gap-3" aria-labelledby="plan-h">
           <h2 id="plan-h" className="text-[1.3rem]!">
-            How the {totalMinutes(plan)} minutes are split
+            How the {total} minutes are split
           </h2>
-          <p className="faint">Timed for {labelFor(SENIORITY_LEVELS, profile.seniority).toLowerCase()} interviews.</p>
+          <p className="faint">
+            For a {labelFor(SENIORITY_LEVELS, level).toLowerCase()} candidate. The split follows the candidate&apos;s level
+            when you schedule.
+          </p>
           <ol className="grid gap-2">
-            {PHASES.map((p, i) => (
+            {round.phases.map((p, i) => (
               <li key={p.value} className="grid grid-cols-[2rem_1fr_auto] items-baseline gap-2">
                 <span className="faint tabular-nums">{i + 1}.</span>
                 <span>
@@ -64,8 +74,16 @@ async function ProblemDetail({ params }: { params: Params }) {
       </article>
 
       <aside className="panel grid content-start gap-4 self-start">
-        <h2 className="text-[1.3rem]!">Start a session</h2>
-        <StartSessionForm slug={problem.slug} />
+        <h2 className="text-[1.3rem]!">Interviewer guide</h2>
+        <p className="faint">Your team only. Candidates see the prompt, never this.</p>
+        <InterviewerGuide guide={problem.guide} phase={null} roundType={round.value} />
+        <p className="faint">
+          To use this problem, open a{" "}
+          <Link href="/candidates" className="link">
+            candidate
+          </Link>{" "}
+          and schedule an interview.
+        </p>
       </aside>
     </div>
   );

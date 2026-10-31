@@ -50,3 +50,15 @@ export function configuredSiteUrl() {
     return null;
   }
 }
+
+/**
+ * Server-only secret key (sb_secret_…, or the legacy service_role key). Used for one
+ * thing: writing AI assessments, which clients must not be able to forge.
+ */
+export function getSupabaseSecretKey() {
+  return process.env.SUPABASE_SECRET_KEY?.trim() || process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || null;
+}
+
+/** AI assessments need both a Claude API key and the Supabase secret key. */
+export const isAiAssessmentConfigured = () =>
+  Boolean(process.env.ANTHROPIC_API_KEY?.trim() && getSupabaseSecretKey() && getSupabaseEnv());

@@ -16,7 +16,8 @@ export default function LoginPage({ searchParams }: { searchParams: SearchParams
   return (
     <div className="page-narrow max-w-md! py-14">
       <h1 className="text-[2rem]!">Sign in to Probewise</h1>
-      <p className="muted mt-3">New here? Signing in creates your account and claims an early-access seat if one is free.</p>
+      <p className="muted mt-3">New here? Signing in creates your account; next you name your company&apos;s workspace. Candidates don&apos;t sign
+        in: they join from the link their interviewer sends.</p>
       <div className="mt-8">
         <Suspense fallback={<div className="skeleton h-40 w-full" aria-hidden="true" />}>
           <LoginContent searchParams={searchParams} />

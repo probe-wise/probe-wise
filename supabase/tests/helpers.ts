@@ -11,12 +11,13 @@ const MIGRATIONS_DIR = join(__dirname, "..", "migrations");
 const SUPABASE_STUB = `
   create role anon nologin;
   create role authenticated nologin;
+  create role service_role nologin;
   create schema auth;
-  create table auth.users (id uuid primary key, email text);
+  create table auth.users (id uuid primary key, email text, is_anonymous boolean not null default false);
   create function auth.uid() returns uuid language sql stable as $$
     select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid
   $$;
-  grant usage on schema public, auth to anon, authenticated;
+  grant usage on schema public, auth to anon, authenticated, service_role;
   grant execute on function auth.uid() to anon, authenticated;
 
   -- Realtime: realtime.send() records into realtime.messages so tests can assert broadcasts;
@@ -90,24 +91,50 @@ export async function asAdmin<T = Record<string, unknown>>(db: PGlite, sql: stri
   return db.query<T>(sql, params);
 }
 
-export async function claim(db: PGlite, userId: string) {
-  const res = await asUser<{ claim_seat: string }>(db, userId, "select public.claim_seat()");
-  return res.rows[0].claim_seat;
+/** Run a statement as the server's service role (bypasses RLS, like SUPABASE_SECRET_KEY). */
+export async function asService<T = Record<string, unknown>>(db: PGlite, sql: string, params: unknown[] = []) {
+  await db.exec("reset role");
+  await db.query("select set_config('request.jwt.claim.sub', '', false)");
+  await db.exec("set role service_role");
+  try {
+    return await db.query<T>(sql, params);
+  } finally {
+    await db.exec("reset role");
+  }
 }
 
-export async function setCap(db: PGlite, cap: number) {
-  await asAdmin(db, "update public.app_config set seat_cap = $1", [cap]);
+/** An anonymous Supabase user, as created for a candidate opening their link. */
+export async function createAnonUser(db: PGlite) {
+  const id = newUserId();
+  await db.exec("reset role");
+  await db.query("insert into auth.users (id, email, is_anonymous) values ($1, null, true)", [id]);
+  return id;
 }
 
-/** A member who has finished onboarding (able to create sessions). */
-export async function createMember(db: PGlite, name = "Ada Lovelace") {
-  const id = await createAuthUser(db);
-  await claim(db, id);
+/** A user who created a workspace (its admin). Returns the user and org ids. */
+export async function createWorkspace(db: PGlite, company = "Acme", name = "Ada Admin") {
+  const user = await createAuthUser(db);
+  const { rows } = await asUser<{ id: string }>(db, user, "select public.create_organization($1, $2) as id", [company, name]);
+  return { user, org: rows[0].id };
+}
+
+/** Adds a teammate directly (as Supabase would after an accepted invite). */
+export async function addMember(db: PGlite, org: string, role: "admin" | "interviewer" = "interviewer", name = "Ivy Interviewer") {
+  const user = await createAuthUser(db);
   await asAdmin(
     db,
-    `update public.profiles set full_name = $2, target_role = 'backend_engineer', seniority = 'senior',
-       years_experience = 6, domains = '{fintech}', onboarding_completed_at = now() where id = $1`,
-    [id, name],
+    "insert into public.org_members (org_id, user_id, role, display_name, email) select $1, $2, $3, $4, email from auth.users where id = $2",
+    [org, user, role, name],
   );
-  return id;
+  return user;
+}
+
+export async function addCandidate(db: PGlite, member: string, org: string, name = "Cal Candidate") {
+  const { rows } = await asUser<{ id: string }>(
+    db,
+    member,
+    "insert into public.candidates (org_id, full_name, email, seniority) values ($1, $2, $3, 'senior') returning id",
+    [org, name, `${name.split(" ")[0].toLowerCase()}@example.com`],
+  );
+  return rows[0].id;
 }

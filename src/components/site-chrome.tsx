@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { signOut } from "@/app/actions/auth";
 import { SubmitButton } from "@/components/submit-button";
-import { getViewer } from "@/lib/dal";
+import { getMembership, getViewer } from "@/lib/dal";
 
 export function Wordmark() {
   return (
@@ -35,6 +35,8 @@ export function SiteHeader() {
 
 async function AuthNav() {
   const viewer = await getViewer();
+  // Candidates in an interview room have an anonymous session: no navigation for them.
+  if (viewer?.anonymous) return null;
   if (!viewer) {
     return (
       <Link href="/login" className="btn btn-secondary">
@@ -42,19 +44,30 @@ async function AuthNav() {
       </Link>
     );
   }
+  const membership = await getMembership();
   return (
     <div className="flex items-center gap-1 sm:gap-2">
-      <Link href="/dashboard" className="btn btn-ghost">
-        Dashboard
-      </Link>
-      <Link href="/problems" className="btn btn-ghost hidden sm:inline-flex">
-        Problems
-      </Link>
-      <Link href="/interview" className="btn btn-ghost hidden sm:inline-flex">
-        Sessions
-      </Link>
-      <Link href="/profile" className="btn btn-ghost">
-        Profile
+      {membership ? (
+        <>
+          <Link href="/dashboard" className="btn btn-ghost">
+            Dashboard
+          </Link>
+          <Link href="/candidates" className="btn btn-ghost hidden sm:inline-flex">
+            Candidates
+          </Link>
+          <Link href="/interview" className="btn btn-ghost hidden md:inline-flex">
+            Interviews
+          </Link>
+          <Link href="/problems" className="btn btn-ghost hidden md:inline-flex">
+            Problems
+          </Link>
+          <Link href="/team" className="btn btn-ghost hidden lg:inline-flex">
+            Team
+          </Link>
+        </>
+      ) : null}
+      <Link href="/account" className="btn btn-ghost">
+        Account
       </Link>
       <form action={signOut}>
         <SubmitButton className="btn btn-secondary" pendingLabel="Signing out…">
@@ -69,7 +82,7 @@ export function SiteFooter() {
   return (
     <footer className="mt-20 border-t border-grid py-8">
       <div className="page flex flex-wrap items-center justify-between gap-3 text-sm text-ink-faint">
-        <span>Probewise is in early access for 100 candidates.</span>
+        <span>Probewise: structured system design interviews for hiring teams.</span>
         <a className="link" href="https://github.com/probe-wise" rel="noopener noreferrer">
           Source on GitHub
         </a>

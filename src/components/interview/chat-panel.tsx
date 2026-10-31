@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { phaseLabel } from "@/lib/interview/phases";
+import { anyPhaseLabel } from "@/lib/interview/rounds";
 
 type Message = { kind: "chat" | "probe"; seq: number; author: string; role: string; text: string; at: string; mine: boolean };
 type Marker = { kind: "phase" | "system"; seq: number; text: string; at: string };
@@ -147,4 +147,4 @@ export function ChatPanel({ feed, role, canSend, staged, onSend }: Props) {
   );
 }
 
-export const phaseMarker = (to: string) => `Moved to ${phaseLabel(to)}`;
+export const phaseMarker = (to: string) => `Moved to ${anyPhaseLabel(to)}`;

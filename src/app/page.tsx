@@ -1,24 +1,29 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import { WhiteboardSketch } from "@/components/whiteboard-sketch";
-import { DOMAINS } from "@/lib/profile-options";
-import { getSeatsRemaining } from "@/lib/seats";
 
-const SEAT_CAP = 100;
-
-const PHASES = [
-  { title: "Clarify requirements", body: "Pin down users, scale and what's out of scope before drawing anything." },
-  { title: "Estimate capacity", body: "Back-of-envelope traffic, storage and bandwidth, with the math shown." },
-  { title: "Define the API and data model", body: "Endpoints, entities and the access patterns they have to serve." },
-  { title: "Sketch the high-level design", body: "The main components and how a request moves through them." },
-  { title: "Deep dive", body: "The interviewer picks the weakest part and keeps asking until it holds up." },
-  { title: "Defend the trade-offs", body: "Consistency, cost, failure modes: why this design and not another." },
+const STEPS = [
+  { title: "Add the candidate", body: "Name, email, the role and level you're hiring for. That's the whole record." },
+  { title: "Schedule the interview", body: "Pick a problem from the bank and one or two interviewers from your team." },
+  { title: "Send the link when you start", body: "The candidate opens it, no account needed, and lands in a shared room." },
+  { title: "Interview on a shared board", body: "A live whiteboard, notes and chat, plus a private guide with follow-ups for you." },
+  { title: "Grade every aspect", body: "Each interviewer scores six phases and communication, with evidence, on their own." },
+  { title: "Compare with an AI read", body: "Optionally, Claude grades the recorded interview against the same rubric." },
 ];
 
-const LEVELS = [
-  { level: "Mid-level", expectation: "A working design with sensible components, and help when you get stuck." },
-  { level: "Senior", expectation: "You lead. Trade-offs and failure modes come up without being asked." },
-  { level: "Staff and above", expectation: "Scope across teams and systems, migrations, and the cost of being wrong." },
+const PROMISES = [
+  {
+    title: "Independent scorecards",
+    body: "You see your colleagues' scores, and the AI's, only after you've submitted yours. Submitted scorecards can't be edited.",
+  },
+  {
+    title: "A record you can trust",
+    body: "Every board edit, message and phase change goes into a tamper-evident log, so a review is based on what actually happened.",
+  },
+  {
+    title: "Candidates see the interview, not the verdict",
+    body: "The candidate gets the problem, the board and the chat. Scorecards, private notes and the interviewer guide stay with your team.",
+  },
 ];
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -32,44 +37,36 @@ export default function Home({ searchParams }: { searchParams: SearchParams }) {
 
       <section className="page grid items-center gap-12 pb-16 pt-12 md:grid-cols-[1fr_1.05fr] md:pt-20">
         <div className="measure">
-          <h1>System design interviews that ask the next question.</h1>
+          <h1>System design interviews your hiring team can calibrate on.</h1>
           <p className="lede mt-5">
-            Probewise runs a full system design round tailored to the role, level and domain you&apos;re interviewing
-            for. Then it keeps probing your design, the way a real interviewer does.
+            Probewise gives your interviewers a shared room, a problem bank with private interviewer guides, and a
+            rubric they grade independently. An AI assessment of the same recording is there when you want a second read.
           </p>
           <div className="mt-8 flex flex-wrap items-center gap-3">
             <Link href="/login" className="btn btn-primary">
-              Claim a seat
+              Create a workspace
             </Link>
             <a href="#how-it-works" className="btn btn-secondary">
-              How a session works
+              How it works
             </a>
           </div>
-          <p className="mt-4 text-sm text-ink-faint" aria-live="polite">
-            <Suspense fallback={<>Early access is limited to {SEAT_CAP} candidates.</>}>
-              <SeatLine />
-            </Suspense>
-          </p>
+          <p className="mt-4 text-sm text-ink-faint">Got an interview link? Just open it. Candidates don&apos;t need an account.</p>
         </div>
         <WhiteboardSketch />
       </section>
 
       <section id="how-it-works" className="scroll-mt-8 border-t border-grid py-16">
         <div className="page">
-          <h2>How a session runs</h2>
-          <p className="muted measure mt-3">
-            Every session follows the structure interviewers at most large tech companies use, so you practise the pacing
-            as well as the content.
-          </p>
+          <h2>How it works</h2>
           <ol className="mt-10 grid gap-x-10 gap-y-8 sm:grid-cols-2 lg:grid-cols-3">
-            {PHASES.map((phase, i) => (
-              <li key={phase.title} className="grid grid-cols-[2rem_1fr] gap-x-3">
+            {STEPS.map((step, i) => (
+              <li key={step.title} className="grid grid-cols-[2rem_1fr] gap-x-3">
                 <span className="text-lg font-semibold text-marker tabular-nums" aria-hidden="true">
                   {i + 1}
                 </span>
                 <div>
-                  <h3>{phase.title}</h3>
-                  <p className="muted mt-1">{phase.body}</p>
+                  <h3>{step.title}</h3>
+                  <p className="muted mt-1">{step.body}</p>
                 </div>
               </li>
             ))}
@@ -78,33 +75,13 @@ export default function Home({ searchParams }: { searchParams: SearchParams }) {
       </section>
 
       <section className="border-t border-grid py-16">
-        <div className="page grid gap-10 lg:grid-cols-[1fr_2fr]">
-          <div>
-            <h2>Problems from the domain you&apos;re hiring into</h2>
-            <p className="muted mt-3">
-              A payments team asks about idempotency. A streaming team asks about CDNs. Pick up to three domains and your
-              problems come from there.
-            </p>
-          </div>
-          <dl className="grid gap-x-8 gap-y-5 sm:grid-cols-2">
-            {DOMAINS.map((d) => (
-              <div key={d.value} className="border-l-2 border-grid pl-4">
-                <dt className="font-semibold">{d.label}</dt>
-                <dd className="mt-0.5 text-[0.95rem] text-ink-faint">{d.hint}</dd>
-              </div>
-            ))}
-          </dl>
-        </div>
-      </section>
-
-      <section className="border-t border-grid py-16">
         <div className="page">
-          <h2>Calibrated to the level you&apos;re targeting</h2>
+          <h2>Built for fair decisions</h2>
           <dl className="mt-8 grid gap-6 md:grid-cols-3">
-            {LEVELS.map((l) => (
-              <div key={l.level}>
-                <dt className="font-semibold">{l.level}</dt>
-                <dd className="muted mt-1">{l.expectation}</dd>
+            {PROMISES.map((p) => (
+              <div key={p.title}>
+                <dt className="font-semibold">{p.title}</dt>
+                <dd className="muted mt-1">{p.body}</dd>
               </div>
             ))}
           </dl>
@@ -114,26 +91,18 @@ export default function Home({ searchParams }: { searchParams: SearchParams }) {
       <section className="border-t border-grid py-16">
         <div className="page flex flex-col items-start gap-5 md:flex-row md:items-center md:justify-between">
           <div className="measure">
-            <h2>Start with a profile</h2>
+            <h2>Set up your team</h2>
             <p className="muted mt-2">
-              Sign in with email, Google or GitHub, tell us the role and domain you&apos;re preparing for, and your first
-              problem set is ready.
+              Sign in with your work email, name your workspace, and invite the people who interview with you.
             </p>
           </div>
           <Link href="/login" className="btn btn-primary">
-            Claim a seat
+            Create a workspace
           </Link>
         </div>
       </section>
     </>
   );
-}
-
-async function SeatLine() {
-  const left = await getSeatsRemaining();
-  if (left === null) return <>Early access is limited to {SEAT_CAP} candidates.</>;
-  if (left === 0) return <>All early-access seats are taken. Sign up to join the waitlist.</>;
-  return <>{left === 1 ? "1 early-access seat left." : `${left} early-access seats left.`}</>;
 }
 
 async function AccountDeletedNotice({ searchParams }: { searchParams: SearchParams }) {
@@ -142,7 +111,7 @@ async function AccountDeletedNotice({ searchParams }: { searchParams: SearchPara
   return (
     <div className="page pt-6">
       <p className="notice notice-success" role="status">
-        Your account and profile were deleted. Your seat has been released.
+        Your account was deleted.
       </p>
     </div>
   );

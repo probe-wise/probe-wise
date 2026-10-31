@@ -1,6 +1,6 @@
 # 0004. Problem bank in code, snapshotted into each session
 
-- Status: Accepted
+- Status: Accepted, amended by [0011](0011-custom-problems-and-rubrics.md) (workspaces can add their own problems)
 - Date: 2026-10-30
 
 ## Context

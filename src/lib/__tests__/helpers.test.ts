@@ -1,23 +1,31 @@
 import { describe, expect, it } from "vitest";
 import { authErrorCode, authErrorMessage, callbackErrorCode } from "../auth-errors";
 import { configuredSiteUrl, enabledOAuthProviders } from "../env";
-import { daysUntil, joinList } from "../profile-form-values";
-import { isGuestOnlyPath, isProtectedPath, isSeatFreePath } from "../routes";
+import { isCandidatePath, isGuestOnlyPath, isProtectedPath, isWorkspaceFreePath } from "../routes";
+import { cleanMultiline, cleanText } from "../text";
 
 describe("route rules", () => {
-  it.each(["/dashboard", "/dashboard/x", "/onboarding", "/profile", "/waitlist", "/problems", "/interview/abc"])("%s is protected", (p) => {
-    expect(isProtectedPath(p)).toBe(true);
-  });
-  it.each(["/", "/login", "/auth/callback", "/dashboards", "/profiles", "/interviews"])("%s is not protected", (p) => {
+  it.each(["/dashboard", "/onboarding", "/account", "/candidates/x", "/team", "/team/join/abc", "/problems", "/interview/abc"])(
+    "%s is protected",
+    (p) => {
+      expect(isProtectedPath(p)).toBe(true);
+    },
+  );
+  it.each(["/", "/login", "/auth/callback", "/join/abc", "/dashboards", "/interviews"])("%s is not protected", (p) => {
     expect(isProtectedPath(p)).toBe(false);
   });
-  it("interview rooms and invite links don't need a seat", () => {
-    expect(isSeatFreePath("/interview/join/abc")).toBe(true);
-    expect(isSeatFreePath("/interview/123?x=1")).toBe(true);
-    expect(isSeatFreePath("/interview")).toBe(true);
-    expect(isSeatFreePath("/interviews")).toBe(false);
-    expect(isSeatFreePath("/dashboard")).toBe(false);
-    expect(isSeatFreePath("/problems/payment-ledger")).toBe(false);
+  it("candidates (anonymous sessions) only get the interview room", () => {
+    expect(isCandidatePath("/interview/123")).toBe(true);
+    expect(isCandidatePath("/interview/123/review?x=1")).toBe(true);
+    expect(isCandidatePath("/interviews")).toBe(false);
+    expect(isCandidatePath("/dashboard")).toBe(false);
+    expect(isCandidatePath("/candidates")).toBe(false);
+  });
+  it("team invites and rooms are reachable before you're in a workspace", () => {
+    expect(isWorkspaceFreePath("/team/join/abc")).toBe(true);
+    expect(isWorkspaceFreePath("/interview/123")).toBe(true);
+    expect(isWorkspaceFreePath("/team")).toBe(false);
+    expect(isWorkspaceFreePath("/dashboard?x=1")).toBe(false);
   });
   it("only /login is guest-only", () => {
     expect(isGuestOnlyPath("/login")).toBe(true);
@@ -62,16 +70,12 @@ describe("env parsing", () => {
   });
 });
 
-describe("display helpers", () => {
-  it("counts days across month and DST boundaries", () => {
-    expect(daysUntil("2026-11-02", "2026-10-30")).toBe(3);
-    expect(daysUntil("2026-10-30", "2026-10-30")).toBe(0);
-    expect(daysUntil("2026-10-29", "2026-10-30")).toBe(-1);
+describe("text cleanup", () => {
+  it("collapses whitespace and strips control characters on one line", () => {
+    expect(cleanText("  Ada\t\nLovelace\u0000 ")).toBe("Ada Lovelace");
+    expect(cleanText(null)).toBe("");
   });
-  it("joins lists in plain English", () => {
-    expect(joinList([])).toBe("");
-    expect(joinList(["A"])).toBe("A");
-    expect(joinList(["A", "B"])).toBe("A and B");
-    expect(joinList(["A", "B", "C"])).toBe("A, B and C");
+  it("keeps line breaks in multi-line text", () => {
+    expect(cleanMultiline("a\r\nb\n\n\n\nc\u0007")).toBe("a\nb\n\nc");
   });
 });

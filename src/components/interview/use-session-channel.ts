@@ -9,7 +9,8 @@ import { createClient } from "@/lib/supabase/client";
 // Live connection to a session (ADR 0002):
 //   • 'event' broadcasts come from the database after an event is committed. They carry a
 //     per-session seq; anything out of order or missing triggers a catch-up read from the log.
-//   • 'board.live' broadcasts are ephemeral deltas between browsers while drawing.
+//   • 'board.live' and 'code.live' broadcasts are ephemeral, between browsers, while
+//     drawing or typing. What's recorded goes through record_event.
 //   • Presence says who has the room open.
 // Interviewers also listen on the private ':interviewers' topic.
 
@@ -23,6 +24,7 @@ type Options = {
   initialSeq: number;
   onEvents: (events: SessionEvent[]) => void;
   onLiveBoard: (elements: BoardElement[]) => void;
+  onLiveCode?: (code: { text: string; language: string }) => void;
 };
 
 export function useSessionChannel({
@@ -33,6 +35,7 @@ export function useSessionChannel({
   initialSeq,
   onEvents,
   onLiveBoard,
+  onLiveCode,
 }: Options) {
   const [connection, setConnection] = useState<ConnectionState>("connecting");
   const [online, setOnline] = useState<string[]>([]);
@@ -40,9 +43,9 @@ export function useSessionChannel({
   const channelRef = useRef<RealtimeChannel | null>(null);
   const lastSeq = useRef(initialSeq);
   const catchingUp = useRef<Promise<void> | null>(null);
-  const handlers = useRef({ onEvents, onLiveBoard });
+  const handlers = useRef({ onEvents, onLiveBoard, onLiveCode });
   useEffect(() => {
-    handlers.current = { onEvents, onLiveBoard };
+    handlers.current = { onEvents, onLiveBoard, onLiveCode };
   });
 
   const supabase = () => (supabaseRef.current ??= createClient());
@@ -118,6 +121,12 @@ export function useSessionChannel({
           const elements = (payload as { elements?: BoardElement[] }).elements;
           if (Array.isArray(elements)) handlers.current.onLiveBoard(elements);
         })
+        .on("broadcast", { event: "code.live" }, ({ payload }) => {
+          const p = payload as { text?: unknown; language?: unknown };
+          if (typeof p.text === "string" && typeof p.language === "string") {
+            handlers.current.onLiveCode?.({ text: p.text, language: p.language });
+          }
+        })
         .on("presence", { event: "sync" }, () => setOnline(Object.keys(main.presenceState())))
         .subscribe((status) => {
           if (cancelled) return;
@@ -179,6 +188,13 @@ export function useSessionChannel({
     void ch.send({ type: "broadcast", event: "board.live", payload: { elements } });
   }, []);
 
+  /** Ephemeral, low-latency code updates (the full text; code files are small). */
+  const sendLiveCode = useCallback((text: string, language: string) => {
+    const ch = channelRef.current;
+    if (!ch) return;
+    void ch.send({ type: "broadcast", event: "code.live", payload: { text, language } });
+  }, []);
+
   const rpc = useCallback(
     async (fn: "start_session" | "end_session" | "change_session_phase", args: Record<string, string>) => {
       const { error } = await supabase().rpc(fn, { p_session: sessionId, ...args } as never);
@@ -187,5 +203,5 @@ export function useSessionChannel({
     [sessionId],
   );
 
-  return { connection, online, record, sendLiveBoard, rpc, catchUp };
+  return { connection, online, record, sendLiveBoard, sendLiveCode, rpc, catchUp };
 }

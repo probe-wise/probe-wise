@@ -4,7 +4,7 @@ import { createClient as createPlainClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { connection } from "next/server";
 import type { Database } from "@/lib/database.types";
-import { requireSupabaseEnv } from "@/lib/env";
+import { getSupabaseSecretKey, requireSupabaseEnv } from "@/lib/env";
 
 /** Per-request client that acts as the signed-in user (RLS applies). */
 export async function createClient() {
@@ -31,10 +31,23 @@ export async function createClient() {
   });
 }
 
-/** Cookie-less client for public data (e.g. the landing-page seat counter). */
+/** Cookie-less client for public data. */
 export function createAnonClient() {
   const { url, key } = requireSupabaseEnv();
   return createPlainClient<Database>(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  });
+}
+
+/**
+ * Privileged client (bypasses RLS). Only for writing AI assessments; every caller must
+ * have authorised the request with the user's own client first.
+ */
+export function createServiceClient() {
+  const { url } = requireSupabaseEnv();
+  const secret = getSupabaseSecretKey();
+  if (!secret) throw new Error("SUPABASE_SECRET_KEY is not set.");
+  return createPlainClient<Database>(url, secret, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
 }

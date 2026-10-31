@@ -1,16 +1,16 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { getSupabaseEnv } from "@/lib/env";
-import { isGuestOnlyPath, isProtectedPath } from "@/lib/routes";
+import { isCandidatePath, isGuestOnlyPath, isProtectedPath } from "@/lib/routes";
 import { DEFAULT_AFTER_LOGIN, safeNextPath } from "@/lib/safe-redirect";
 
 /**
  * Runs before every page request:
  *  1. Refreshes the Supabase session cookie (required by @supabase/ssr).
  *  2. Sends signed-out visitors away from protected pages to /login?next=…
- *  3. Sends signed-in visitors away from /login.
- * Membership (seat / waitlist / onboarding) is checked in the pages themselves,
- * because it needs a database read.
+ *  3. Keeps candidates (anonymous sessions from an interview link) inside the interview room.
+ *  4. Sends signed-in visitors away from /login.
+ * Workspace membership is checked in the pages themselves, because it needs a database read.
  */
 export async function proxy(request: NextRequest) {
   const env = getSupabaseEnv();
@@ -37,9 +37,11 @@ export async function proxy(request: NextRequest) {
   // Do not run code between createServerClient and getClaims(): it validates the JWT
   // and refreshes the session when needed.
   let signedIn = false;
+  let anonymous = false;
   try {
     const { data } = await supabase.auth.getClaims();
     signedIn = Boolean(data?.claims?.sub);
+    anonymous = data?.claims?.is_anonymous === true;
   } catch {
     signedIn = false; // Auth service unreachable → treat as signed out rather than 500.
   }
@@ -57,11 +59,11 @@ export async function proxy(request: NextRequest) {
     return redirect;
   };
 
-  if (!signedIn && isProtectedPath(pathname)) {
+  if ((!signedIn || (anonymous && !isCandidatePath(pathname))) && isProtectedPath(pathname)) {
     return redirectTo(`/login?next=${encodeURIComponent(pathname + search)}`);
   }
 
-  if (signedIn && isGuestOnlyPath(pathname)) {
+  if (signedIn && !anonymous && isGuestOnlyPath(pathname)) {
     return redirectTo(safeNextPath(request.nextUrl.searchParams.get("next"), DEFAULT_AFTER_LOGIN));
   }
 

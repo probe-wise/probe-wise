@@ -1,6 +1,7 @@
 # 0005. Session participants, roles and invites
 
-- Status: Accepted
+- Status: Superseded in part by [0007](0007-company-workspaces.md) and [0008](0008-candidate-access-by-link.md)
+  (participant rows and consent still apply; modes and interviewer invites are gone)
 - Date: 2026-10-30
 
 ## Context

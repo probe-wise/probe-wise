@@ -1,3 +1,4 @@
+import type { CodeLanguage, RoundType } from "@/lib/interview/rounds";
 import type { Domain, Seniority, TargetRole } from "@/lib/profile-options";
 
 export type ProblemDomain = Domain | "general";
@@ -24,6 +25,13 @@ export type InterviewerGuide = {
 };
 
 export type Problem = ProblemPrompt & {
+  /** Defaults to system design (the original bank). */
+  roundType?: RoundType;
+  /** Coding rounds: the editor's starting language and contents. */
+  language?: CodeLanguage;
+  starterCode?: string;
+  /** Set for a workspace's own problems (ADR 0011); built-in ones have none. */
+  id?: string;
   slug: string;
   /** Bump when the prompt or guide changes meaningfully; stored on each session. */
   version: number;
@@ -39,4 +47,4 @@ export type Problem = ProblemPrompt & {
 };
 
 /** Safe to send to any client. */
-export type ProblemSummary = Omit<Problem, "guide" | "prompt">;
+export type ProblemSummary = Omit<Problem, "guide" | "prompt" | "starterCode"> & { roundType: RoundType; custom: boolean };

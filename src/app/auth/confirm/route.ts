@@ -2,7 +2,7 @@ import type { EmailOtpType } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 import { authErrorCode, callbackErrorCode } from "@/lib/auth-errors";
 import { configuredSiteUrl, isSupabaseConfigured } from "@/lib/env";
-import { claimSeatAndRoute } from "@/lib/membership";
+import { routeAfterSignIn } from "@/lib/membership";
 import { safeNextPath } from "@/lib/safe-redirect";
 import { createClient } from "@/lib/supabase/server";
 
@@ -40,6 +40,6 @@ export async function GET(request: NextRequest) {
     return toLogin("missing_code");
   }
 
-  const destination = await claimSeatAndRoute(supabase, next);
+  const destination = await routeAfterSignIn(supabase, next);
   return NextResponse.redirect(new URL(destination, origin));
 }

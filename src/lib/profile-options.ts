@@ -1,5 +1,5 @@
-// Single source of truth for profile choices.
-// The SQL migration repeats these lists in CHECK constraints;
+// Shared vocabularies: levels, roles and domains used by the problem bank and candidate
+// records. The SQL migration repeats SENIORITY_LEVELS in a CHECK constraint;
 // `src/lib/__tests__/profile-options-sync.test.ts` fails if they drift apart.
 
 export const TARGET_ROLES = [
@@ -36,36 +36,10 @@ export const DOMAINS = [
   { value: "travel_hospitality", label: "Travel & booking", hint: "Reservations, search, pricing" },
 ] as const;
 
-export const WEAK_AREAS = [
-  { value: "requirements_gathering", label: "Clarifying requirements" },
-  { value: "capacity_estimation", label: "Capacity estimation" },
-  { value: "api_design", label: "API design" },
-  { value: "data_modeling", label: "Data modeling" },
-  { value: "scalability", label: "Scaling & partitioning" },
-  { value: "consistency_availability", label: "Consistency vs availability" },
-  { value: "caching", label: "Caching" },
-  { value: "messaging_queues", label: "Queues & async processing" },
-  { value: "reliability_failure", label: "Reliability & failure modes" },
-  { value: "observability", label: "Observability" },
-  { value: "security", label: "Security" },
-  { value: "communication", label: "Communicating my design" },
-] as const;
-
-export const LIMITS = {
-  fullNameMax: 100,
-  maxDomains: 3,
-  maxCompanies: 5,
-  companyNameMax: 60,
-  maxYearsExperience: 50,
-  /** How far ahead an interview date may be set. */
-  interviewDateMaxDaysAhead: 365,
-} as const;
-
 type Values<T extends readonly { value: string }[]> = T[number]["value"];
 export type TargetRole = Values<typeof TARGET_ROLES>;
 export type Seniority = Values<typeof SENIORITY_LEVELS>;
 export type Domain = Values<typeof DOMAINS>;
-export type WeakArea = Values<typeof WEAK_AREAS>;
 
 export const values = <T extends readonly { value: string }[]>(list: T) =>
   list.map((o) => o.value) as [Values<T>, ...Values<T>[]];
